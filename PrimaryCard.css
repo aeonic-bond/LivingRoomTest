@@ -1,0 +1,144 @@
+/* Requires: globalTokens.css, globalTypography.css */
+
+/* ── PrimaryCard ─────────────────────────────────────────────── */
+.primary-card {
+  position: absolute;
+  top: var(--spacer-700);
+  left: var(--spacer-700);
+  z-index: 10;
+
+  background: var(--color-bg-gray-sink);
+  border-radius: var(--radius-large);
+  padding: 2px;
+  overflow: hidden;
+  box-shadow: 1px 2px 2px rgba(0, 0, 0, 0.07);
+
+  max-width: var(--primary-card-max-width);
+
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.primary-card.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: all;
+}
+
+/* ── ID section ─────────────────────────────────────────────── */
+.pc-header {
+  background: var(--color-white-base);
+  border-radius: calc(var(--radius-large) - 2px) calc(var(--radius-large) - 2px) 0 0;
+  padding: var(--spacer-400);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacer-200);
+}
+
+.pc-header-name {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-200);
+  min-width: 0;
+}
+
+.pc-header-name-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  pointer-events: none;
+  color: var(--color-black-base);
+}
+
+.pc-header-name-label {
+  font: var(--type-label-500);
+  color: var(--color-black-base);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pc-header-variant {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-200);
+  flex-shrink: 0;
+}
+
+.pc-header-variant-label {
+  font: var(--type-label-300);
+  color: var(--color-text-black-off);
+  white-space: nowrap;
+}
+
+.pc-header-variant-icon {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  pointer-events: none;
+  color: var(--color-text-black-off);
+}
+
+/* ── Option section ─────────────────────────────────────────── */
+.pc-body {
+  border-radius: 0 0 calc(var(--radius-large) - 2px) calc(var(--radius-large) - 2px);
+  padding: var(--spacer-400);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-400);
+}
+
+.pc-option-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-300);
+}
+
+.pc-option-type {
+  display: flex;
+  justify-content: space-between;
+  font: var(--type-label-300);
+  color: var(--color-text-black-off);
+}
+
+.pc-divider {
+  height: 1px;
+  background: var(--color-text-gray-base);
+}
+
+.pc-swatches {
+  display: flex;
+  gap: var(--spacer-300);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 2px;
+  scrollbar-width: none;
+}
+
+.pc-swatches::-webkit-scrollbar { display: none; }
+
+.pc-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--color-text-gray-base);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+}
+
+.pc-swatch:hover { transform: scale(1.08); }
+
+.pc-swatch.active {
+  border-color: var(--color-black-base);
+  box-shadow: inset 0 0 0 2px var(--color-white-base);
+}
+
+.pc-swatch.active.light {
+  border-color: var(--color-black-base);
+  box-shadow: inset 0 0 0 2px var(--color-special-whitepickerstroke);
+}

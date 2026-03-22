@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbital Camera on Rails</title>
+<link rel="stylesheet" href="globalTokens.css">
+<link rel="stylesheet" href="globalTypography.css">
+<link rel="stylesheet" href="PrimaryCard.css">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { background: #0a0a0c; overflow: hidden; font-family: 'JetBrains Mono', monospace; color: #e0e0e0; cursor: default; }
+
+  #viewport {
+    position: fixed;
+    inset: 0;
+  }
+  #viewport canvas { display: block; width: 100%; height: 100%; }
+
+  #controls { position: absolute; bottom: 16px; right: 16px; z-index: 10; display: flex; gap: 6px; align-items: center; background: rgba(15,15,20,0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 8px 14px; font-size: 10px; }
+  #controls label { color: #777; white-space: nowrap; font-size: 10px; }
+  #controls input[type="range"] { -webkit-appearance: none; appearance: none; width: 70px; height: 3px; background: #2a2a30; border-radius: 2px; outline: none; opacity: 1; padding: 0; margin: 0; }
+  #controls input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; background: #999; border-radius: 50%; cursor: pointer; }
+  .slider-row { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 6px; border-radius: 6px; transition: background 0.2s; min-height: 24px; }
+  .slider-row label { min-width: 0; text-align: right; pointer-events: none; }
+  .slider-row:hover, .slider-row.active { background: rgba(255,255,255,0.05); }
+  .slider-row:hover input[type="range"], .slider-row.active input[type="range"] { width: 70px; opacity: 1; }
+  #deselect-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #999; padding: 4px 8px; border-radius: 5px; font-family: 'JetBrains Mono', monospace; font-size: 9px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+  #deselect-btn:hover { background: rgba(255,255,255,0.1); color: #ccc; }
+  #variant-switcher { position: absolute; bottom: 16px; left: 16px; z-index: 10; display: flex; gap: 6px; }
+  .variant-btn { width: 36px; height: 36px; background: rgba(15,15,20,0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; color: #777; font-family: 'JetBrains Mono', monospace; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .variant-btn:hover { background: rgba(255,255,255,0.1); color: #ccc; }
+  .variant-btn.active { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); color: #fff; }
+  #ring-label { position: absolute; z-index: 20; display: none; transform: translate(-50%, -50%); align-items: center; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #ffffff; }
+  #ring-label input { background: none; border: none; outline: none; width: auto; text-align: right; cursor: text; padding: 0; font-family: inherit; font-size: inherit; color: inherit; }
+  #ring-label span { pointer-events: none; user-select: none; }
+</style>
+</head>
+<body>
+<div id="viewport">
+  <div id="ring-label"><input id="ring-label-input" type="text" /><span>°</span></div>
+  <div id="variant-switcher">
+    <button class="variant-btn active" data-variant="0">#0</button>
+    <button class="variant-btn" data-variant="1">#1</button>
+    <button class="variant-btn" data-variant="2">#2</button>
+  </div>
+  <div id="controls">
+    <div class="slider-row"><label>Zoom</label><input type="range" id="radius-slider" min="2" max="10" step="0.1" value="6"></div>
+    <button id="deselect-btn">Reset</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="PrimaryCard.js"></script>
+<script>
+(() => {
+  const DEFAULT_CENTER = new THREE.Vector3(0, 1.0, 0);
+  const orbitCenter = new THREE.Vector3().copy(DEFAULT_CENTER);
+  const targetCenter = new THREE.Vector3().copy(DEFAULT_CENTER);
+  const LERP_SPEED = 0.06;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0f0f14);
+  scene.fog = new THREE.Fog(0x0f0f14, 14, 28);
+
+  const viewport = document.getElementById('viewport');
+  const card = new PrimaryCard(viewport);
+
+  const camera = new THREE.PerspectiveCamera(50, viewport.clientWidth / viewport.clientHeight, 0.1, 100);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.95;
+  viewport.appendChild(renderer.domElement);
+
+  let orbitAngle = Math.PI * 0.25;
+  let orbitRadius = 6;
+  let cameraHeight = 1.6;
+  let targetHeight = 1.6;
+  const DEFAULT_HEIGHT = 1.6;
+  const SELECTED_HEIGHT = 2.4; // raised to give space for color picker above piece
+
+  let selectedName = null;
+  const selectables = [];
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  // ─── Lighting (upgraded) ──────────────────────────────────
+  scene.add(new THREE.AmbientLight(0x445566, 0.35));
+
+  // Hemisphere for soft sky/ground bounce
+  const hemi = new THREE.HemisphereLight(0x8899bb, 0x443322, 0.3);
+  scene.add(hemi);
+
+  const keyLight = new THREE.DirectionalLight(0xffeedd, 0.8);
+  keyLight.position.set(4, 8, 3);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(2048, 2048);
+  keyLight.shadow.camera.near = 0.5;
+  keyLight.shadow.camera.far = 20;
+  keyLight.shadow.camera.left = -8;
+  keyLight.shadow.camera.right = 8;
+  keyLight.shadow.camera.top = 8;
+  keyLight.shadow.camera.bottom = -8;
+  keyLight.shadow.bias = -0.001;
+  scene.add(keyLight);
+
+  const lampLight = new THREE.PointLight(0xff9944, 0.9, 8);
+  lampLight.position.set(-2.2, 2.5, -1.5);
+  lampLight.castShadow = true;
+  lampLight.shadow.mapSize.set(512, 512);
+  scene.add(lampLight);
+
+  const fillLight = new THREE.PointLight(0x4488ff, 0.2, 10);
+  fillLight.position.set(3, 2, 2);
+  scene.add(fillLight);
+
+  // Subtle rim light from behind
+  const rimLight = new THREE.PointLight(0x6644aa, 0.25, 8);
+  rimLight.position.set(-1, 3, -3.5);
+  scene.add(rimLight);
+
+  // ─── Helper: rounded box ──────────────────────────────────
+  function roundedBoxGeo(w, h, d, r, segments) {
+    const s = segments || 3;
+    const shape = new THREE.Shape();
+    const hw = w / 2 - r, hh = h / 2 - r;
+    shape.moveTo(-hw, -h / 2);
+    shape.lineTo(hw, -h / 2);
+    shape.quadraticCurveTo(w / 2, -h / 2, w / 2, -hh);
+    shape.lineTo(w / 2, hh);
+    shape.quadraticCurveTo(w / 2, h / 2, hw, h / 2);
+    shape.lineTo(-hw, h / 2);
+    shape.quadraticCurveTo(-w / 2, h / 2, -w / 2, hh);
+    shape.lineTo(-w / 2, -hh);
+    shape.quadraticCurveTo(-w / 2, -h / 2, -hw, -h / 2);
+
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: d, bevelEnabled: true, bevelThickness: r, bevelSize: r, bevelSegments: s, curveSegments: s
+    });
+    geo.center();
+    return geo;
+  }
+
+  // ─── Procedural texture generators ─────────────────────────
+  function makeCanvasTex(w, h, drawFn) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    drawFn(ctx, w, h);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  // Fabric weave texture (color + roughness variation)
+  function fabricTex(baseR, baseG, baseB, scale) {
+    return makeCanvasTex(256, 256, (ctx, w, h) => {
+      // Base fill
+      ctx.fillStyle = `rgb(${baseR},${baseG},${baseB})`;
+      ctx.fillRect(0, 0, w, h);
+      // Weave pattern
+      for (let y = 0; y < h; y += 2) {
+        for (let x = 0; x < w; x += 2) {
+          const noise = (Math.random() - 0.5) * 18;
+          const weave = ((x + y) % 4 < 2) ? 6 : -6;
+          const r = Math.max(0, Math.min(255, baseR + noise + weave));
+          const g = Math.max(0, Math.min(255, baseG + noise + weave));
+          const b = Math.max(0, Math.min(255, baseB + noise + weave));
+          ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+          ctx.fillRect(x, y, 2, 2);
+        }
+      }
+    });
+  }
+
+  // Fabric roughness map (subtle variation)
+  function fabricRoughTex() {
+    return makeCanvasTex(128, 128, (ctx, w, h) => {
+      for (let y = 0; y < h; y += 2) {
+        for (let x = 0; x < w; x += 2) {
+          const v = 180 + (Math.random() - 0.5) * 40 + (((x + y) % 4 < 2) ? 10 : -10);
+          ctx.fillStyle = `rgb(${v|0},${v|0},${v|0})`;
+          ctx.fillRect(x, y, 2, 2);
+        }
+      }
+    });
+  }
+
+  // Floor wood texture (darker planks)
+  function floorTex() {
+    return makeCanvasTex(512, 512, (ctx, w, h) => {
+      const base = { r: 42, g: 34, b: 24 };
+      ctx.fillStyle = `rgb(${base.r},${base.g},${base.b})`;
+      ctx.fillRect(0, 0, w, h);
+      // Planks
+      const plankH = 30;
+      for (let py = 0; py < h; py += plankH) {
+        // Slight color shift per plank
+        const shift = (Math.random() - 0.5) * 15;
+        for (let y = py; y < py + plankH && y < h; y++) {
+          const wave = Math.sin(y * 0.06) * 6;
+          for (let x = 0; x < w; x += 2) {
+            const grain = Math.sin((x + wave) * 0.03) * 8;
+            const noise = (Math.random() - 0.5) * 8;
+            const r = Math.max(0, Math.min(255, base.r + shift + grain + noise));
+            const g = Math.max(0, Math.min(255, base.g + shift + grain + noise));
+            const b = Math.max(0, Math.min(255, base.b + shift + grain * 0.5 + noise));
+            ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+            ctx.fillRect(x, y, 2, 1);
+          }
+        }
+        // Plank gap
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fillRect(0, py, w, 1);
+      }
+    });
+  }
+
+  // Contact shadow (soft dark ellipse)
+  function makeContactShadow(radiusX, radiusZ) {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 128;
+    const ctx = c.getContext('2d');
+    const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(0,0,0,0.35)');
+    grad.addColorStop(0.5, 'rgba(0,0,0,0.15)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(c);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(radiusX * 2, radiusZ * 2), mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = 0.003;
+    return mesh;
+  }
+
+  // ─── Generate textures ────────────────────────────────────
+  const floorDiffuse = floorTex();
+  floorDiffuse.repeat.set(3, 3);
+
+  const fabricDiffuse = fabricTex(44, 68, 128, 1);
+  fabricDiffuse.repeat.set(4, 4);
+  const fabricRough = fabricRoughTex();
+  fabricRough.repeat.set(4, 4);
+
+  const fabricDarkDiffuse = fabricTex(36, 56, 104, 1);
+  fabricDarkDiffuse.repeat.set(4, 4);
+
+  // ─── Materials (with procedural textures) ─────────────────
+  // Floor — dark walnut with grain
+  const floorMat = new THREE.MeshStandardMaterial({ map: floorDiffuse, roughness: 0.72, metalness: 0.05 });
+  // Walls
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.92, metalness: 0.0, transparent: true, opacity: 1.0 });
+  const wallMatSide = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.92, metalness: 0.0, transparent: true, opacity: 1.0 });
+  const baseboardMat = new THREE.MeshStandardMaterial({ color: 0x161618, roughness: 0.5, metalness: 0.05, transparent: true, opacity: 1.0 });
+  const baseboardMatSide = new THREE.MeshStandardMaterial({ color: 0x161618, roughness: 0.5, metalness: 0.05, transparent: true, opacity: 1.0 });
+  // Couch — fabric with weave texture
+  const couchFabricMat = new THREE.MeshStandardMaterial({ map: fabricDiffuse, roughnessMap: fabricRough, roughness: 0.88, metalness: 0.0 });
+  const couchDarkMat = new THREE.MeshStandardMaterial({ map: fabricDarkDiffuse, roughnessMap: fabricRough, roughness: 0.9 });
+  const couchLegMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.15, metalness: 0.9, envMapIntensity: 1.5 });
+
+  // ─── Floor ────────────────────────────────────────────────
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), floorMat);
+  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
+  scene.add(floor);
+
+  // ─── Walls ────────────────────────────────────────────────
+  // Back wall (plain)
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(14, 5), wallMat);
+  backWall.position.set(0, 2.5, -4); backWall.receiveShadow = true;
+  scene.add(backWall);
+
+  // Back wall baseboard
+  const bb1 = new THREE.Mesh(new THREE.BoxGeometry(14, 0.12, 0.03), baseboardMat);
+  bb1.position.set(0, 0.06, -3.98); bb1.castShadow = true;
+  scene.add(bb1);
+
+  // ─── Side wall with traditional window ─────────────────────
+  const SIDE_X = -4;
+  const WIN_W = 2.4;
+  const WIN_H = 2.0;
+  const WIN_Y = 2.2;     // center of window
+  const WIN_Z = -0.8;    // position along wall
+  const MULLION = 0.05;
+  const FRAME_DEPTH = 0.06;
+
+  // Wall panels around window (4 pieces: left, right, above, below)
+  // Left panel
+  const swLeft = new THREE.Mesh(new THREE.PlaneGeometry(14, 5), wallMatSide);
+  swLeft.position.set(SIDE_X, 2.5, 0); swLeft.rotation.y = Math.PI / 2; swLeft.receiveShadow = true;
+  scene.add(swLeft);
+
+  // Window hole: we'll place the window elements on top of the wall
+  // Frame material
+  const winFrameMat = new THREE.MeshStandardMaterial({ color: 0xd8d0c0, roughness: 0.4, metalness: 0.05, transparent: true, opacity: 1.0 });
+
+  // Window recess (dark inset behind frame)
+  const recessMat = new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 0.9, transparent: true, opacity: 1.0 });
+  const recess = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W, WIN_H), recessMat);
+  recess.position.set(SIDE_X + 0.001, WIN_Y, WIN_Z); recess.rotation.y = Math.PI / 2;
+  scene.add(recess);
+
+  // Sky/outside view behind window
+  const outsideCanvas = document.createElement('canvas');
+  outsideCanvas.width = 256; outsideCanvas.height = 256;
+  const ctx = outsideCanvas.getContext('2d');
+
+  // Daytime sky gradient
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, 256);
+  skyGrad.addColorStop(0, '#6b8cae');
+  skyGrad.addColorStop(0.35, '#8ba8c4');
+  skyGrad.addColorStop(0.6, '#a8c0d4');
+  skyGrad.addColorStop(0.75, '#c8d8e4');
+  skyGrad.addColorStop(1, '#d4dce0');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, 256, 256);
+
+  // A couple of soft clouds
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.beginPath(); ctx.ellipse(80, 60, 40, 12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(180, 40, 30, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(140, 80, 25, 8, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Distant treeline/buildings
+  ctx.fillStyle = '#8a9a88';
+  for (let tx = 0; tx < 256; tx += 3) {
+    const th = 8 + Math.sin(tx * 0.05) * 4 + Math.random() * 6;
+    ctx.fillRect(tx, 220 - th, 4, th);
+  }
+  // Ground hint
+  ctx.fillStyle = '#7a8a6a';
+  ctx.fillRect(0, 220, 256, 36);
+
+  const outsideTex = new THREE.CanvasTexture(outsideCanvas);
+  const outsideMat = new THREE.MeshBasicMaterial({ map: outsideTex, transparent: true, opacity: 1.0 });
+  const outsideView = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W - 0.1, WIN_H - 0.1), outsideMat);
+  outsideView.position.set(SIDE_X - 0.01, WIN_Y, WIN_Z); outsideView.rotation.y = Math.PI / 2;
+  scene.add(outsideView);
+
+  // Glass pane
+  const winGlassMat = new THREE.MeshStandardMaterial({
+    color: 0x99bbdd, roughness: 0.02, metalness: 0.2,
+    transparent: true, opacity: 0.06,
+  });
+  const winGlass = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W - 0.08, WIN_H - 0.08), winGlassMat);
+  winGlass.position.set(SIDE_X + 0.015, WIN_Y, WIN_Z); winGlass.rotation.y = Math.PI / 2;
+  scene.add(winGlass);
+
+  // Outer frame (4 bars)
+  const fTop = new THREE.Mesh(new THREE.BoxGeometry(FRAME_DEPTH, MULLION * 1.2, WIN_W + 0.08), winFrameMat);
+  fTop.position.set(SIDE_X + 0.02, WIN_Y + WIN_H / 2 + MULLION * 0.6, WIN_Z);
+  scene.add(fTop);
+  const fBot = new THREE.Mesh(new THREE.BoxGeometry(FRAME_DEPTH, MULLION * 1.5, WIN_W + 0.08), winFrameMat);
+  fBot.position.set(SIDE_X + 0.02, WIN_Y - WIN_H / 2 - MULLION * 0.75, WIN_Z);
+  scene.add(fBot);
+  const fLeft = new THREE.Mesh(new THREE.BoxGeometry(FRAME_DEPTH, WIN_H + MULLION * 2.5, MULLION * 1.2), winFrameMat);
+  fLeft.position.set(SIDE_X + 0.02, WIN_Y, WIN_Z - WIN_W / 2 - MULLION * 0.6);
+  scene.add(fLeft);
+  const fRight = new THREE.Mesh(new THREE.BoxGeometry(FRAME_DEPTH, WIN_H + MULLION * 2.5, MULLION * 1.2), winFrameMat);
+  fRight.position.set(SIDE_X + 0.02, WIN_Y, WIN_Z + WIN_W / 2 + MULLION * 0.6);
+  scene.add(fRight);
+
+  // Cross mullions (2 vertical, 1 horizontal = 6 panes)
+  const vMull1 = new THREE.Mesh(new THREE.BoxGeometry(FRAME_DEPTH * 0.7, WIN_H, MULLION * 0.7), winFrameMat);
+  vMull1.position.set(SIDE_X + 0.025, WIN_Y, WIN_Z - WIN_W / 3);
+  scene.add(vMull1);
+  const vMull2 = new THREE.Mesh(new THREE.BoxGeometry(FRAME_DEPTH * 0.7, WIN_H, MULLION * 0.7), winFrameMat);
+  vMull2.position.set(SIDE_X + 0.025, WIN_Y, WIN_Z + WIN_W / 3);
+  scene.add(vMull2);
+  const hMull = new THREE.Mesh(new THREE.BoxGeometry(FRAME_DEPTH * 0.7, MULLION * 0.7, WIN_W), winFrameMat);
+  hMull.position.set(SIDE_X + 0.025, WIN_Y + 0.15, WIN_Z);
+  scene.add(hMull);
+
+  // Window sill
+  const sillMat = new THREE.MeshStandardMaterial({ color: 0xc8c0b0, roughness: 0.35, metalness: 0.05, transparent: true, opacity: 1.0 });
+  const sill = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.04, WIN_W + 0.2), sillMat);
+  sill.position.set(SIDE_X + 0.08, WIN_Y - WIN_H / 2 - MULLION * 1.5 - 0.01, WIN_Z);
+  sill.castShadow = true;
+  scene.add(sill);
+
+  // ─── Natural light from window ─────────────────────────────
+  // Main sunlight beam (directional, casts shadows from window direction)
+  const sunLight = new THREE.DirectionalLight(0xfff4e0, 1.2);
+  sunLight.position.set(-6, 5, -0.8);
+  sunLight.target.position.set(1, 0, -0.8);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(1024, 1024);
+  sunLight.shadow.camera.near = 0.5;
+  sunLight.shadow.camera.far = 15;
+  sunLight.shadow.camera.left = -4;
+  sunLight.shadow.camera.right = 4;
+  sunLight.shadow.camera.top = 4;
+  sunLight.shadow.camera.bottom = -1;
+  sunLight.shadow.bias = -0.002;
+  scene.add(sunLight);
+  scene.add(sunLight.target);
+
+  // Warm fill near window
+  const winFill = new THREE.PointLight(0xffeedd, 0.5, 6);
+  winFill.position.set(SIDE_X + 1.5, WIN_Y, WIN_Z);
+  scene.add(winFill);
+
+  // Secondary bounce (softer, wider)
+  const winBounce = new THREE.PointLight(0xdde8f4, 0.25, 9);
+  winBounce.position.set(SIDE_X + 3, 0.5, WIN_Z);
+  scene.add(winBounce);
+
+  // Light patch on floor (simulates light rectangle from window)
+  const lightPatchMat = new THREE.MeshBasicMaterial({
+    color: 0xfff8e8,
+    transparent: true,
+    opacity: 0.12,
+  });
+  const lightPatch = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W * 0.9, WIN_H * 1.2), lightPatchMat);
+  lightPatch.rotation.x = -Math.PI / 2;
+  lightPatch.rotation.z = 0.15;
+  lightPatch.position.set(SIDE_X + 2.5, 0.008, WIN_Z);
+  scene.add(lightPatch);
+
+  // Softer outer glow patch
+  const lightPatchOuter = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W * 1.4, WIN_H * 1.8), new THREE.MeshBasicMaterial({
+    color: 0xfff4e0, transparent: true, opacity: 0.05,
+  }));
+  lightPatchOuter.rotation.x = -Math.PI / 2;
+  lightPatchOuter.rotation.z = 0.15;
+  lightPatchOuter.position.set(SIDE_X + 3.2, 0.007, WIN_Z);
+  scene.add(lightPatchOuter);
+
+  // Collect side wall window objects for fade
+  const sideWallObjects = [swLeft, recess, outsideView, winGlass, fTop, fBot, fLeft, fRight, vMull1, vMull2, hMull, sill];
+  const sideWallFadeMats = [wallMatSide, recessMat, outsideMat, winGlassMat, winFrameMat, sillMat];
+
+  // Back wall fade objects
+  const backWallObjects = [backWall, bb1];
+  const backWallFadeMats = [wallMat, baseboardMat];
+
+  // Side wall baseboard
+  const bb2 = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 14), baseboardMatSide);
+  bb2.position.set(-3.98, 0.06, 0); bb2.castShadow = true;
+  scene.add(bb2);
+
+  // ─── Corner AO (dark gradient strips at wall-floor junctions) ──
+  const aoMat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false });
+  // Back wall AO strip
+  const aoBackCanvas = document.createElement('canvas');
+  aoBackCanvas.width = 4; aoBackCanvas.height = 32;
+  const aoCtx1 = aoBackCanvas.getContext('2d');
+  const aoGrad1 = aoCtx1.createLinearGradient(0, 0, 0, 32);
+  aoGrad1.addColorStop(0, 'rgba(0,0,0,0.3)');
+  aoGrad1.addColorStop(1, 'rgba(0,0,0,0)');
+  aoCtx1.fillStyle = aoGrad1;
+  aoCtx1.fillRect(0, 0, 4, 32);
+  const aoBackTex = new THREE.CanvasTexture(aoBackCanvas);
+  const aoBack = new THREE.Mesh(new THREE.PlaneGeometry(14, 0.5), new THREE.MeshBasicMaterial({ map: aoBackTex, transparent: true, depthWrite: false }));
+  aoBack.rotation.x = -Math.PI / 2;
+  aoBack.position.set(0, 0.002, -3.75);
+  scene.add(aoBack);
+
+  // Side wall AO strip
+  const aoSide = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 14), new THREE.MeshBasicMaterial({ map: aoBackTex, transparent: true, depthWrite: false }));
+  aoSide.rotation.x = -Math.PI / 2;
+  aoSide.rotation.z = Math.PI / 2;
+  aoSide.position.set(-3.75, 0.002, 0);
+  scene.add(aoSide);
+
+  // ─── Helper ───────────────────────────────────────────────
+  function getGroupCenter(group) {
+    const box = new THREE.Box3().setFromObject(group);
+    return box.getCenter(new THREE.Vector3());
+  }
+
+  // ─── Couch (detailed) ─────────────────────────────────────
+  const couchPivot = new THREE.Group();
+  couchPivot.position.set(0, 0, -1.8);
+  couchPivot.userData.selectName = 'Couch';
+  scene.add(couchPivot);
+
+  const couchGroup = new THREE.Group();
+  couchGroup.position.set(0, 0, 1.8); // offset so couch center aligns with pivot origin
+  couchPivot.add(couchGroup);
+
+  // Base frame
+  const couchBase = new THREE.Mesh(roundedBoxGeo(3.2, 0.2, 1.0, 0.04, 2), couchDarkMat);
+  couchBase.position.set(0, 0.32, -1.8); couchBase.castShadow = true; couchBase.receiveShadow = true;
+  couchGroup.add(couchBase);
+
+  // Seat cushions (3 individual rounded cushions)
+  [-1.0, 0, 1.0].forEach((x, i) => {
+    const cushion = new THREE.Mesh(roundedBoxGeo(0.95, 0.22, 0.85, 0.06, 3), couchFabricMat);
+    cushion.position.set(x, 0.55, -1.78);
+    cushion.castShadow = true; cushion.receiveShadow = true;
+    couchGroup.add(cushion);
+  });
+
+  // Back cushions (3 individual, slightly reclined)
+  [-1.0, 0, 1.0].forEach((x, i) => {
+    const backCush = new THREE.Mesh(roundedBoxGeo(0.92, 0.55, 0.2, 0.06, 3), couchFabricMat);
+    backCush.position.set(x, 0.92, -2.15);
+    backCush.rotation.x = 0.08;
+    backCush.castShadow = true;
+    couchGroup.add(backCush);
+  });
+
+  // Back structure
+  const couchBackFrame = new THREE.Mesh(roundedBoxGeo(3.2, 0.7, 0.12, 0.03, 2), couchDarkMat);
+  couchBackFrame.position.set(0, 0.95, -2.32); couchBackFrame.castShadow = true;
+  couchGroup.add(couchBackFrame);
+
+  // Arms (rounded)
+  [-1.65, 1.65].forEach(x => {
+    const arm = new THREE.Mesh(roundedBoxGeo(0.18, 0.4, 1.0, 0.06, 3), couchDarkMat);
+    arm.position.set(x, 0.65, -1.8); arm.castShadow = true;
+    couchGroup.add(arm);
+    // Arm top (rounded pad)
+    const armTop = new THREE.Mesh(roundedBoxGeo(0.2, 0.08, 1.02, 0.04, 2), couchFabricMat);
+    armTop.position.set(x, 0.88, -1.8); armTop.castShadow = true;
+    couchGroup.add(armTop);
+  });
+
+  // Legs (tapered metal)
+  [[-1.5, -1.35], [1.5, -1.35], [-1.5, -2.25], [1.5, -2.25]].forEach(([x, z]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.22, 8), couchLegMat);
+    leg.position.set(x, 0.11, z); leg.castShadow = true;
+    couchGroup.add(leg);
+  });
+
+  // couchGroup is already added to couchPivot above
+
+  // Contact shadow under couch
+  const couchShadow = makeContactShadow(1.8, 0.6);
+  couchShadow.position.set(0, 0.003, -1.8);
+  scene.add(couchShadow);
+
+  // ─── Register selectables ─────────────────────────────────
+  [couchPivot].forEach(group => {
+    selectables.push({
+      group,
+      name: group.userData.selectName,
+      center: getGroupCenter(group)
+    });
+  });
+
+  // ─── Color palettes per furniture piece ────────────────────
+  // Each entry: { hex (for swatch), primary (THREE.Color), accent (THREE.Color) }
+  const colorPalettes = {
+    'Couch': {
+      rows: [
+        {
+          label: 'Fabric',
+          mats: [couchFabricMat, couchDarkMat],
+          colors: [
+            { name: 'Navy',      hex: '#2c4480', values: [0x2c4480, 0x243868] },
+            { name: 'Charcoal',  hex: '#3a3a3e', values: [0x3a3a3e, 0x2a2a2e] },
+            { name: 'Forest',    hex: '#2a5a3a', values: [0x2a5a3a, 0x1e4a2e] },
+            { name: 'Burgundy',  hex: '#6a2a30', values: [0x6a2a30, 0x521e24] },
+            { name: 'Cream',     hex: '#c8b898', values: [0xc8b898, 0xb0a080] },
+            { name: 'Slate',     hex: '#5a6a7a', values: [0x5a6a7a, 0x4a5a6a] },
+            { name: 'Rust',      hex: '#a05030', values: [0xa05030, 0x884028] },
+            { name: 'Olive',     hex: '#6a7a4a', values: [0x6a7a4a, 0x566838] },
+          ]
+        },
+        {
+          label: 'Legs',
+          mats: [couchLegMat],
+          colors: [
+            { name: 'Black',        hex: '#1a1a1a', values: [0x1a1a1a] },
+            { name: 'Brushed Steel', hex: '#6a6a70', values: [0x6a6a70] },
+            { name: 'Gold',         hex: '#b8943e', values: [0xb8943e] },
+            { name: 'Walnut',       hex: '#5c3a1e', values: [0x5c3a1e] },
+          ]
+        }
+      ]
+    },
+  };
+
+  // ─── Initialize material colors from palette defaults ──────
+  Object.values(colorPalettes).forEach(palette => {
+    palette.rows.forEach(row => {
+      const def = row.colors[0];
+      row.mats.forEach((mat, i) => {
+        if (def.values[i] !== undefined) mat.color.setHex(def.values[i]);
+      });
+    });
+  });
+
+  // ─── Pink Dot ─────────────────────────────────────────────
+  const dotMat = new THREE.MeshBasicMaterial({ color: 0xff6b9d });
+  const pinkDot = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), dotMat);
+  pinkDot.position.copy(orbitCenter);
+  scene.add(pinkDot);
+
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xff6b9d, transparent: true, opacity: 0.15 });
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), glowMat);
+  glow.position.copy(orbitCenter);
+  scene.add(glow);
+
+  function showSelBox() {}
+  function clearSelBox() {}
+
+  // ─── Rail ─────────────────────────────────────────────────
+  let railLine;
+  function buildRail() {
+    if (railLine) scene.remove(railLine);
+    const pts = [];
+    for (let i = 0; i <= 128; i++) {
+      const a = (i / 128) * Math.PI * 2;
+      pts.push(new THREE.Vector3(
+        orbitCenter.x + Math.cos(a) * orbitRadius,
+        cameraHeight,
+        orbitCenter.z + Math.sin(a) * orbitRadius
+      ));
+    }
+    railLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: 0xff6b9d, transparent: true, opacity: 0.25 })
+    );
+    scene.add(railLine);
+  }
+  buildRail();
+
+  const camMarker = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), new THREE.MeshBasicMaterial({ color: 0xff6b9d }));
+  scene.add(camMarker);
+
+  const sightLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+    new THREE.LineBasicMaterial({ color: 0xff6b9d, transparent: true, opacity: 0.15 })
+  );
+  scene.add(sightLine);
+
+  // ─── Camera update ────────────────────────────────────────
+  function updateCamera() {
+    camera.position.set(
+      orbitCenter.x + Math.cos(orbitAngle) * orbitRadius,
+      cameraHeight,
+      orbitCenter.z + Math.sin(orbitAngle) * orbitRadius
+    );
+    camera.lookAt(orbitCenter);
+
+    camMarker.position.set(
+      orbitCenter.x + Math.cos(orbitAngle) * orbitRadius,
+      cameraHeight,
+      orbitCenter.z + Math.sin(orbitAngle) * orbitRadius
+    );
+
+    const p = sightLine.geometry.attributes.position.array;
+    p[0] = camMarker.position.x; p[1] = cameraHeight; p[2] = camMarker.position.z;
+    p[3] = orbitCenter.x; p[4] = orbitCenter.y; p[5] = orbitCenter.z;
+    sightLine.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // ─── Selection logic ──────────────────────────────────────
+  function buildCardOptions(name) {
+    const palette = colorPalettes[name];
+    if (!palette) return [];
+    return palette.rows.map(row => {
+      const currentHex = row.mats[0].color.getHex();
+      const activeColor = row.colors.find(c => c.values[0] === currentHex);
+      return {
+        label: row.label,
+        value: activeColor ? activeColor.name : '',
+        swatches: row.colors.map(c => ({
+          name: c.name,
+          hex: c.hex,
+          active: c.values[0] === currentHex,
+          onSelect: () => {
+            row.mats.forEach((m, i) => {
+              if (c.values[i] !== undefined) m.color.setHex(c.values[i]);
+            });
+          }
+        }))
+      };
+    });
+  }
+
+  function selectFurniture(name) {
+    const entry = selectables.find(s => s.name === name);
+    if (!entry) return;
+    selectedName = name;
+    targetCenter.copy(entry.center);
+    showSelBox(entry.group);
+    if (activeVariant === 1 || activeVariant === 2) {
+      floorCircle.position.set(entry.center.x, 0.004, entry.center.z);
+      floorCircleHit.position.set(entry.center.x, 0.004, entry.center.z);
+      floorCircle.scale.setScalar(0);
+      floorCircle.visible = true;
+      floorCircleHit.visible = true;
+      ringAngle = couchPivot.rotation.y;
+      ringTargetScale = 1;
+      updateRingDot();
+      if (activeVariant === 2) {
+        v2Mode = 'rotate';
+        centerToggleHit.visible = true;
+        ringDot.visible = true;
+        updateArrowPositions(0);
+      } else {
+        ringDot.visible = true;
+      }
+    }
+
+    card.show({ name, variant: '', options: buildCardOptions(name) });
+    targetHeight = SELECTED_HEIGHT;
+  }
+
+  function deselect() {
+    selectedName = null;
+    targetCenter.copy(DEFAULT_CENTER);
+    clearSelBox();
+    floorCircle.visible = false;
+    floorCircleHit.visible = false;
+    ringDot.visible = false;
+    ringTargetScale = 0;
+    floorCircle.scale.setScalar(0);
+    circDragging = false;
+    moveDragAxis = null;
+    moveArrows.forEach(a    => { a.visible = false; });
+    moveArrowHits.forEach(a => { a.visible = false; });
+    centerToggleHit.visible = false;
+    v2Mode = 'rotate';
+
+    card.hide();
+    targetHeight = DEFAULT_HEIGHT;
+  }
+
+  // ─── Click detection ──────────────────────────────────────
+  let clickStart = { x: 0, y: 0 };
+  let clickTime = 0;
+
+  function ptrDown(e) {
+    const cx = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+    const cy = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+    clickStart.x = cx; clickStart.y = cy;
+    clickTime = performance.now();
+  }
+
+  function ptrUp(e) {
+    const cx = e.clientX ?? e.changedTouches?.[0]?.clientX;
+    const cy = e.clientY ?? e.changedTouches?.[0]?.clientY;
+    if (cx == null || cy == null) return;
+    if (Math.hypot(cx - clickStart.x, cy - clickStart.y) > 8 || performance.now() - clickTime > 300) return;
+
+    const rect = viewport.getBoundingClientRect();
+    mouse.x = ((cx - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((cy - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    // Tab #2: center toggle switches rotate/move mode
+    if (activeVariant === 2 && centerToggleHit.visible) {
+      const ch = raycaster.intersectObject(centerToggleHit, false);
+      if (ch.length > 0) { setV2Mode(v2Mode === 'rotate' ? 'move' : 'rotate'); return; }
+    }
+    // Don't deselect if the drag-to-rotate circle or move arrows were clicked
+    if (floorCircleHit.visible) {
+      const circleHits = raycaster.intersectObject(floorCircleHit, false);
+      if (circleHits.length > 0) return;
+    }
+    if (moveArrowHits.some(h => h.visible)) {
+      if (raycaster.intersectObjects(moveArrowHits, false).length > 0) return;
+    }
+
+    let hit = null, closestDist = Infinity;
+    for (const entry of selectables) {
+      const meshes = [];
+      entry.group.traverse(c => { if (c.isMesh) meshes.push(c); });
+      const intersects = raycaster.intersectObjects(meshes, false);
+      if (intersects.length > 0 && intersects[0].distance < closestDist) {
+        closestDist = intersects[0].distance;
+        hit = entry;
+      }
+    }
+    if (hit) { selectedName === hit.name ? deselect() : selectFurniture(hit.name); }
+    else { deselect(); }
+  }
+
+  renderer.domElement.addEventListener('mousedown', ptrDown);
+  renderer.domElement.addEventListener('touchstart', ptrDown);
+  window.addEventListener('mouseup', ptrUp);
+  window.addEventListener('touchend', ptrUp);
+
+  // ─── Drag to orbit ────────────────────────────────────────
+  let isDragging = false, lastMouseX = 0;
+  const keys = {};
+  const radiusSlider = document.getElementById('radius-slider');
+
+  renderer.domElement.addEventListener('mousedown', e => { isDragging = true; lastMouseX = e.clientX; });
+  window.addEventListener('mouseup', () => isDragging = false);
+  window.addEventListener('mousemove', e => { if (!isDragging || circDragging) return; orbitAngle -= (e.clientX - lastMouseX) * 0.005; lastMouseX = e.clientX; });
+
+  renderer.domElement.addEventListener('touchstart', e => { isDragging = true; lastMouseX = e.touches[0].clientX; });
+  window.addEventListener('touchend', () => isDragging = false);
+  window.addEventListener('touchmove', e => { if (!isDragging) return; orbitAngle -= (e.touches[0].clientX - lastMouseX) * 0.005; lastMouseX = e.touches[0].clientX; });
+
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    keys[k] = true;
+    if (k === 'arrowleft' || k === 'arrowright' || k === 'arrowup' || k === 'arrowdown') {
+      e.preventDefault();
+      if (document.activeElement && document.activeElement.type === 'range') document.activeElement.blur();
+    }
+  });
+  window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+  // ─── Controls ─────────────────────────────────────────────
+  radiusSlider.addEventListener('input', () => { orbitRadius = parseFloat(radiusSlider.value); });
+
+  // Keep slider row expanded while dragging
+  const row = radiusSlider.closest('.slider-row');
+  radiusSlider.addEventListener('mousedown', () => row.classList.add('active'));
+  radiusSlider.addEventListener('touchstart', () => row.classList.add('active'));
+  window.addEventListener('mouseup', () => row.classList.remove('active'));
+  window.addEventListener('touchend', () => row.classList.remove('active'));
+  document.getElementById('deselect-btn').addEventListener('click', deselect);
+  const ringLabel = document.getElementById('ring-label');
+  const ringLabelInput = document.getElementById('ring-label-input');
+
+  function applyLabelDeg(val) {
+    const deg = parseFloat(val);
+    if (isNaN(deg)) return;
+    snapOverride = true;
+    ringAngle = ((deg % 360) + 360) % 360 * Math.PI / 180;
+    updateRingDot();
+  }
+
+  ringLabelInput.addEventListener('keydown', e => e.stopPropagation());
+  ringLabelInput.addEventListener('input', e => { ringLabelInput.size = e.target.value.length || 1; });
+  ringLabelInput.addEventListener('change', e => applyLabelDeg(e.target.value));
+  ringLabelInput.addEventListener('keypress', e => { if (e.key === 'Enter') { applyLabelDeg(e.target.value); ringLabelInput.blur(); } });
+  ringLabelInput.addEventListener('blur', () => {
+    if (!circHovered && !circDragging) {
+      setCircDepth(false);
+      floorCircle.material.color.set(0x888888);
+      ringLabel.style.display = 'none';
+    }
+  });
+
+  // ─── Variant #1: floor circle ─────────────────────────────
+  const floorCircle = new THREE.Mesh(
+    new THREE.RingGeometry(0.88, 1.0, 64),
+    new THREE.MeshBasicMaterial({ color: 0x888888, side: THREE.DoubleSide, depthWrite: false })
+  );
+  floorCircle.rotation.x = -Math.PI / 2;
+  floorCircle.position.set(0, 0.004, -1.8);
+  floorCircle.visible = false;
+  scene.add(floorCircle);
+
+  // Invisible hit disc for drag-to-rotate
+  const floorCircleHit = new THREE.Mesh(
+    new THREE.CircleGeometry(1.0, 32),
+    new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
+  );
+  floorCircleHit.rotation.x = -Math.PI / 2;
+  floorCircleHit.position.copy(floorCircle.position);
+  floorCircleHit.visible = false;
+  scene.add(floorCircleHit);
+
+  // ─── V2: Move arrows ──────────────────────────────────────
+  const _arrowGeo = new THREE.BufferGeometry();
+  _arrowGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+     0,    0,  0.18,   // tip
+    -0.09, 0,  0,      // base left
+     0.09, 0,  0       // base right
+  ], 3));
+  _arrowGeo.setIndex([0, 2, 1]);
+
+  const _arrowDefs = [
+    { axis: 'z', sign:  1, ry: 0            },  // +Z
+    { axis: 'z', sign: -1, ry: Math.PI      },  // -Z
+    { axis: 'x', sign:  1, ry: -Math.PI / 2 },  // +X
+    { axis: 'x', sign: -1, ry:  Math.PI / 2 },  // -X
+  ];
+  const ARROW_OFFSET = 1.3;
+
+  const moveArrows = _arrowDefs.map(d => {
+    const m = new THREE.Mesh(_arrowGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthWrite: false }));
+    m.rotation.y = d.ry;
+    m.userData.axis = d.axis; m.userData.sign = d.sign;
+    m.visible = false;
+    scene.add(m);
+    return m;
+  });
+
+  const moveArrowHits = _arrowDefs.map(() => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+    m.rotation.x = -Math.PI / 2;
+    m.visible = false;
+    scene.add(m);
+    return m;
+  });
+
+  const centerToggleHit = new THREE.Mesh(
+    new THREE.CircleGeometry(0.65, 32),
+    new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
+  );
+  centerToggleHit.rotation.x = -Math.PI / 2;
+  centerToggleHit.visible = false;
+  scene.add(centerToggleHit);
+
+  let v2Mode = 'rotate';
+  let moveDragAxis = null;
+  const _moveDragStartHit   = new THREE.Vector3();
+  const _moveDragStartPivot = new THREE.Vector3();
+
+  function updateArrowPositions(s) {
+    const cx = floorCircle.position.x, cz = floorCircle.position.z;
+    _arrowDefs.forEach((d, i) => {
+      const px = cx + (d.axis === 'x' ? d.sign * ARROW_OFFSET * s : 0);
+      const pz = cz + (d.axis === 'z' ? d.sign * ARROW_OFFSET * s : 0);
+      moveArrows[i].position.set(px, 0.008, pz);
+      moveArrows[i].scale.setScalar(s);
+      moveArrowHits[i].position.set(px, 0.004, pz);
+    });
+    centerToggleHit.position.set(cx, 0.004, cz);
+  }
+
+  function setV2Mode(mode) {
+    v2Mode = mode;
+    const show = selectedName !== null;
+    ringDot.visible        = show && mode === 'rotate';
+    moveArrows.forEach(a   => { a.visible = show && mode === 'move'; });
+    moveArrowHits.forEach(a => { a.visible = show && mode === 'move'; });
+  }
+
+  // ─── Direction dot (variant #1) ───────────────────────────
+  const ringDot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.055, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffffff })
+  );
+  ringDot.visible = false;
+  scene.add(ringDot);
+
+  let ringAngle = 0; // tracks couch facing angle; 0 = front toward +z
+  let snapOverride = false;
+  let ringTargetScale = 0;
+  const SNAP_THRESHOLD = Math.PI / 30; // ~6°
+
+  function snappedAngle(a) {
+    for (let i = 0; i < 8; i++) {
+      const snap = (Math.PI / 4) * i;
+      let diff = ((a - snap) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+      if (Math.abs(diff) < SNAP_THRESHOLD) return snap;
+    }
+    return a;
+  }
+
+  function updateRingDot() {
+    const r = 0.94; // midpoint of ring (inner 0.88, outer 1.0)
+    const cx = floorCircle.position.x;
+    const cz = floorCircle.position.z;
+    const displayAngle = snapOverride ? ringAngle : snappedAngle(ringAngle);
+    ringDot.position.set(cx + Math.sin(displayAngle) * r, 0.012, cz + Math.cos(displayAngle) * r);
+    couchPivot.rotation.y = displayAngle;
+  }
+
+  // ─── Drag-to-rotate (variant #1) ──────────────────────────
+  const _floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const _floorHit = new THREE.Vector3();
+  let circDragging = false;
+  let circHovered = false;
+
+  function setCircDepth(onTop) {
+    floorCircle.material.depthTest = !onTop; floorCircle.renderOrder = onTop ? 999 : 0;
+    ringDot.material.depthTest = !onTop;     ringDot.renderOrder    = onTop ? 999 : 0;
+  }
+
+  renderer.domElement.addEventListener('mousedown', e => {
+    // Tab #2 move mode: arrow drag
+    if (activeVariant === 2 && v2Mode === 'move' && moveArrowHits.some(h => h.visible)) {
+      const rect2 = viewport.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect2.left) / rect2.width)  *  2 - 1;
+      mouse.y = ((e.clientY - rect2.top)  / rect2.height) * -2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObjects(moveArrowHits, false);
+      if (hits.length > 0) {
+        moveDragAxis = hits[0].object.userData?.axis ?? moveArrowHits.indexOf(hits[0].object) < 2 ? 'z' : 'x';
+        // resolve axis from arrowDefs index
+        const idx = moveArrowHits.indexOf(hits[0].object);
+        moveDragAxis = _arrowDefs[idx].axis;
+        if (raycaster.ray.intersectPlane(_floorPlane, _floorHit)) {
+          _moveDragStartHit.copy(_floorHit);
+          _moveDragStartPivot.copy(couchPivot.position);
+        }
+        return;
+      }
+    }
+    if (!floorCircleHit.visible) return;
+    mouse.x = ((e.clientX - viewport.getBoundingClientRect().left) / viewport.clientWidth) * 2 - 1;
+    mouse.y = -((e.clientY - viewport.getBoundingClientRect().top) / viewport.clientHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    if (raycaster.intersectObject(floorCircleHit, false).length > 0) {
+      circDragging = true;
+      snapOverride = false;
+      floorCircle.material.color.set(0xffffff);
+      setCircDepth(true);
+      ringLabel.style.display = 'flex';
+      [couchFabricMat, couchDarkMat, couchLegMat].forEach(m => { m.transparent = false; m.opacity = 1.0; });
+      // Snap dot to click position immediately
+      if (raycaster.ray.intersectPlane(_floorPlane, _floorHit)) {
+        const cx = floorCircle.position.x, cz = floorCircle.position.z;
+        ringAngle = Math.atan2(_floorHit.x - cx, _floorHit.z - cz);
+        updateRingDot();
+      }
+    }
+  });
+  window.addEventListener('mousemove', e => {
+    const rect = viewport.getBoundingClientRect();
+
+    // ── Couch hover preview (unselected, variant #1) ──────────
+    if (!selectedName && activeVariant === 1 || activeVariant === 2) {
+      mouse.x = ((e.clientX - rect.left) / rect.width)  *  2 - 1;
+      mouse.y = ((e.clientY - rect.top)  / rect.height) * -2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const entry = selectables[0];
+      const meshes = [];
+      entry.group.traverse(c => { if (c.isMesh) meshes.push(c); });
+      const overCouch = raycaster.intersectObjects(meshes, false).length > 0;
+      if (overCouch && !floorCircle.visible) {
+        floorCircle.position.set(entry.center.x, 0.004, entry.center.z);
+        floorCircle.scale.setScalar(0);
+        floorCircle.visible = true;
+        ringDot.visible = false;
+        ringTargetScale = 0.5;
+      } else if (!overCouch && floorCircle.visible && ringTargetScale === 0.5) {
+        floorCircle.visible = false;
+        floorCircle.scale.setScalar(0);
+        ringTargetScale = 0;
+      }
+    }
+
+    if (!circDragging && floorCircleHit.visible) {
+      mouse.x = ((e.clientX - rect.left) / rect.width)  *  2 - 1;
+      mouse.y = ((e.clientY - rect.top)  / rect.height) * -2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const isOver = raycaster.intersectObject(floorCircleHit, false).length > 0;
+      if (isOver !== circHovered) {
+        circHovered = isOver;
+        const inputFocused = document.activeElement === ringLabelInput;
+        if (!inputFocused) {
+          setCircDepth(isOver);
+          floorCircle.material.color.set(isOver ? 0xffffff : 0x888888);
+          ringLabel.style.display = isOver ? 'flex' : 'none';
+        }
+      }
+    }
+    if (!circDragging) return;
+
+    mouse.x = ((e.clientX - rect.left) / rect.width)  *  2 - 1;
+    mouse.y = ((e.clientY - rect.top)  / rect.height) * -2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    if (!raycaster.ray.intersectPlane(_floorPlane, _floorHit)) return;
+
+    const cx = floorCircle.position.x, cz = floorCircle.position.z;
+    ringAngle = Math.atan2(_floorHit.x - cx, _floorHit.z - cz);
+    updateRingDot();
+  });
+  window.addEventListener('mouseup', () => {
+    if (circDragging) {
+      floorCircle.material.color.set(circHovered ? 0xffffff : 0x888888);
+      if (!circHovered) { setCircDepth(false); ringLabel.style.display = 'none'; }
+      [couchFabricMat, couchDarkMat, couchLegMat].forEach(m => { m.transparent = false; m.opacity = 1.0; });
+    }
+    circDragging = false;
+  });
+
+  // ─── Variant switcher ─────────────────────────────────────
+  const variantHandlers = {
+    0: { activate() {}, deactivate() {} },
+    1: {
+      activate() {
+        const show = selectedName !== null;
+        floorCircle.visible = show;
+        floorCircleHit.visible = show;
+        ringDot.visible = show;
+        if (show) updateRingDot();
+      },
+      deactivate() {
+        floorCircle.visible = false;
+        floorCircleHit.visible = false;
+        ringDot.visible = false;
+        circDragging = false;
+      }
+    },
+    2: {
+      activate() {
+        const show = selectedName !== null;
+        floorCircle.visible = show;
+        floorCircleHit.visible = show;
+        ringDot.visible = show;
+        if (show) updateRingDot();
+      },
+      deactivate() {
+        floorCircle.visible = false;
+        floorCircleHit.visible = false;
+        ringDot.visible = false;
+        circDragging = false;
+      }
+    },
+  };
+
+  let activeVariant = 0;
+
+  function setVariant(v) {
+    variantHandlers[activeVariant]?.deactivate();
+    activeVariant = v;
+    variantHandlers[activeVariant]?.activate();
+  }
+
+  document.querySelectorAll('.variant-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.variant-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      setVariant(parseInt(btn.dataset.variant));
+    });
+  });
+
+  // ─── Render loop ──────────────────────────────────────────
+  function animate() {
+    requestAnimationFrame(animate);
+
+    if (selectedName) {
+      if (keys['a'] || keys['arrowleft'])  { ringAngle -= 0.02; updateRingDot(); }
+      if (keys['d'] || keys['arrowright']) { ringAngle += 0.02; updateRingDot(); }
+    } else {
+      if (keys['a'] || keys['arrowleft'])  orbitAngle += 0.02;
+      if (keys['d'] || keys['arrowright']) orbitAngle -= 0.02;
+    }
+    if (keys['w']) { orbitRadius = Math.max(2, orbitRadius - 0.05); radiusSlider.value = orbitRadius; }
+    if (keys['s']) { orbitRadius = Math.min(10, orbitRadius + 0.05); radiusSlider.value = orbitRadius; }
+    if (keys['arrowup'])   { targetHeight = Math.min(5, targetHeight + 0.03); }
+    if (keys['arrowdown']) { targetHeight = Math.max(0.5, targetHeight - 0.03); }
+
+    // Smooth camera height
+    cameraHeight += (targetHeight - cameraHeight) * 0.08;
+
+    orbitCenter.lerp(targetCenter, LERP_SPEED);
+    pinkDot.position.copy(orbitCenter);
+    glow.position.copy(orbitCenter);
+
+    buildRail();
+
+    const t = performance.now() * 0.001;
+    glow.scale.setScalar(1 + 0.15 * Math.sin(t * 2.5));
+    dotMat.color.setHSL(0.93, 0.8, 0.55 + 0.05 * Math.sin(t * 3));
+
+    updateCamera();
+
+    // ─── Ring scale animation ───────────────────────────────
+    if (floorCircle.visible) {
+      const s = floorCircle.scale.x + (ringTargetScale - floorCircle.scale.x) * 0.12;
+      floorCircle.scale.setScalar(s);
+      // Keep dot on the ring's scaled orbit at all times
+      const scaledR = 0.94 * s;
+      const displayAngle = snapOverride ? ringAngle : snappedAngle(ringAngle);
+      const cx = floorCircle.position.x, cz = floorCircle.position.z;
+      ringDot.position.set(cx + Math.sin(displayAngle) * scaledR, 0.012, cz + Math.cos(displayAngle) * scaledR);
+    }
+
+    // ─── Ring label ─────────────────────────────────────────
+    if (ringLabel.style.display !== 'none' && floorCircle.visible) {
+      const proj = floorCircle.position.clone().project(camera);
+      const hw = viewport.clientWidth * 0.5, hh = viewport.clientHeight * 0.5;
+      ringLabel.style.left = (proj.x * hw + hw) + 'px';
+      ringLabel.style.top  = (-proj.y * hh + hh) + 'px';
+      const deg = Math.round(((couchPivot.rotation.y % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) * 180 / Math.PI);
+      if (document.activeElement !== ringLabelInput) {
+        ringLabelInput.value = deg;
+        ringLabelInput.size = String(deg).length || 1;
+      }
+    }
+
+    // ─── Wall proximity fade ────────────────────────────────
+    // Back wall at z = -4, side wall at x = -4
+    const FADE_START = 3.5;
+    const FADE_END = 1.5;
+    const camPos = camera.position;
+
+    // Distance from camera to back wall plane (z = -4)
+    const distBack = Math.abs(camPos.z - (-4));
+    const backAlpha = THREE.MathUtils.clamp((distBack - FADE_END) / (FADE_START - FADE_END), 0, 1);
+
+    // Back wall + window fades
+    backWallFadeMats.forEach(m => {
+      m.opacity = backAlpha;
+      m.depthWrite = backAlpha > 0.99;
+    });
+    const backVisible = backAlpha > 0.005;
+    backWallObjects.forEach(obj => { obj.visible = backVisible; });
+
+    // Distance from camera to side wall plane (x = -4)
+    const distSide = Math.abs(camPos.x - (-4));
+    const sideAlpha = THREE.MathUtils.clamp((distSide - FADE_END) / (FADE_START - FADE_END), 0, 1);
+    sideWallFadeMats.forEach(m => {
+      m.opacity = sideAlpha;
+      m.depthWrite = sideAlpha > 0.99;
+    });
+    baseboardMatSide.opacity = sideAlpha;
+    baseboardMatSide.depthWrite = sideAlpha > 0.99;
+    const sideVisible = sideAlpha > 0.005;
+    sideWallObjects.forEach(obj => { obj.visible = sideVisible; });
+    bb2.visible = sideVisible;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  function onResize() {
+    const w = viewport.clientWidth;
+    const h = viewport.clientHeight;
+    if (w === 0 || h === 0) return;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+    renderer.render(scene, camera);
+  }
+  window.addEventListener('resize', onResize);
+
+})();
+</script>
+</body>
+</html>
