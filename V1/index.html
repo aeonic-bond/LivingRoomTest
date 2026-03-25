@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Furniture Configurator</title>
+<link rel="stylesheet" href="../globalTokens.css">
+<link rel="stylesheet" href="../globalTypography.css">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+
+  /* ── Viewport (root layout) ─────────────────────────────── */
+  .viewport {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    background: var(--color-white-base);
+  }
+
+  /* ── DynamicLeftPanel ───────────────────────────────────── */
+  .dynamic-left-panel {
+    width: 184px;
+    flex-shrink: 0;
+    background: linear-gradient(97.5deg, #fbfafa, #d3d3d3);
+  }
+
+  /* ── SceneContainer ─────────────────────────────────────── */
+  .scene-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(126deg, #fbfafa, #d3d3d3);
+  }
+
+  .scene-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── Room Label (HTML overlay) ──────────────────────────── */
+  .room-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    padding-bottom: var(--spacer-700);
+    font: var(--type-label-300);
+    color: var(--color-black-base);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="viewport">
+  <div class="dynamic-left-panel"></div>
+  <div class="scene-container" id="sceneContainer">
+    <canvas id="canvas"></canvas>
+    <div class="room-label" id="roomLabel">Rectangle Room: 12ft x 16ft</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="CameraController.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════
+//  ROOM CONFIG
+// ══════════════════════════════════════════════════════════════
+const ROOM = {
+  panelCols: 3,
+  panelRows: 4,
+  unitsPerPanel: 4,
+  get width()  { return this.panelCols * this.unitsPerPanel; },
+  get height() { return this.panelRows * this.unitsPerPanel; },
+};
+
+const SHOW_GRID = true;
+
+// ══════════════════════════════════════════════════════════════
+//  THREE.JS SETUP
+// ══════════════════════════════════════════════════════════════
+const canvas    = document.getElementById('canvas');
+const container = document.getElementById('sceneContainer');
+
+const scene = new THREE.Scene();
+scene.background = null; // transparent — CSS gradient shows through
+
+const frustumSize = Math.max(ROOM.width, ROOM.height) + 6;
+const aspect = container.clientWidth / container.clientHeight;
+
+const camera = new THREE.OrthographicCamera(
+  -frustumSize * aspect / 2,  frustumSize * aspect / 2,
+   frustumSize / 2,           -frustumSize / 2,
+   0.1, 100
+);
+camera.position.y = 20;
+
+// ── Camera defaults (the reference point for all zoom states) ──
+const cam = new CameraController(camera, container, {
+  zoom: 1.1,
+  x: ROOM.width / 2,
+  z: ROOM.height / 2,
+});
+cam.toDefault();
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+// ── Lighting ──────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+dirLight.position.set(10, 20, 8);
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.set(2048, 2048);
+dirLight.shadow.camera.left   = -20;
+dirLight.shadow.camera.right  =  20;
+dirLight.shadow.camera.top    =  20;
+dirLight.shadow.camera.bottom = -20;
+scene.add(dirLight);
+
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.25);
+fillLight.position.set(-8, 10, -6);
+scene.add(fillLight);
+
+// ══════════════════════════════════════════════════════════════
+//  FLOOR
+// ══════════════════════════════════════════════════════════════
+const floorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(ROOM.width, ROOM.height),
+  floorMat
+);
+floor.rotation.x = -Math.PI / 2;
+floor.position.set(ROOM.width / 2, -0.01, ROOM.height / 2);
+floor.receiveShadow = true;
+scene.add(floor);
+
+// ══════════════════════════════════════════════════════════════
+//  GRID
+// ══════════════════════════════════════════════════════════════
+const gridGroup = new THREE.Group();
+gridGroup.visible = SHOW_GRID;
+
+const gridMat = new THREE.LineBasicMaterial({ color: 0xcccccc });
+
+// Vertical panel lines (interior only)
+for (let i = 1; i < ROOM.panelCols; i++) {
+  const x = i * ROOM.unitsPerPanel;
+  const pts = [
+    new THREE.Vector3(x, 0.001, 0),
+    new THREE.Vector3(x, 0.001, ROOM.height),
+  ];
+  gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
+}
+
+// Horizontal panel lines (interior only)
+for (let j = 1; j < ROOM.panelRows; j++) {
+  const z = j * ROOM.unitsPerPanel;
+  const pts = [
+    new THREE.Vector3(0, 0.001, z),
+    new THREE.Vector3(ROOM.width, 0.001, z),
+  ];
+  gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
+}
+
+scene.add(gridGroup);
+
+// ══════════════════════════════════════════════════════════════
+//  RENDER + RESIZE
+// ══════════════════════════════════════════════════════════════
+function resize() {
+  cam.resize(frustumSize);
+  renderer.setSize(container.clientWidth, container.clientHeight);
+}
+
+window.addEventListener('resize', resize);
+
+(function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>
