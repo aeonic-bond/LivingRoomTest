@@ -1,0 +1,1751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Furniture Configurator</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#E8E6E0; --surface:#FFFFFF; --grid-light:#D3D1C7;
+    --text-primary:#2C2C2A; --text-secondary:#888780; --text-tertiary:#B4B2A9;
+    --accent:#1D6B52; --danger:#E24B4A; --select:#378ADD;
+    --radius:6px; --radius-lg:10px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text-primary);height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none;}
+  header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--grid-light);background:var(--surface);flex-shrink:0;z-index:10;}
+  header h1{font-size:14px;font-weight:600;letter-spacing:-0.02em;}
+  header .subtitle{font-family:'DM Mono',monospace;font-size:11px;color:var(--text-tertiary);}
+  .header-right{display:flex;align-items:center;gap:12px;}
+  .status-pill{font-family:'DM Mono',monospace;font-size:11px;color:var(--text-secondary);background:var(--bg);padding:4px 10px;border-radius:20px;}
+  .btn{font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;padding:6px 14px;border:1px solid var(--grid-light);border-radius:var(--radius);background:var(--surface);color:var(--text-primary);cursor:pointer;transition:all 0.15s;}
+  .btn:hover{border-color:var(--text-secondary);}
+  .btn.danger:hover{border-color:var(--danger);color:var(--danger);}
+  .workspace{display:flex;flex:1;overflow:hidden;position:relative;}
+  .canvas-area{flex:1;position:relative;}
+
+  /* ── Asset Panel (left side) ── */
+  .asset-bar{
+    width:0;overflow:hidden;background:var(--surface);border-right:1px solid var(--grid-light);
+    display:flex;flex-direction:column;flex-shrink:0;transition:width 0.25s ease;z-index:15;
+  }
+  .asset-bar.visible{width:220px;}
+  #assetBarCards{display:flex;flex-direction:column;gap:4px;padding:8px;flex:1;overflow-y:auto;}
+  .asset-bar-card{
+    display:flex;align-items:center;gap:8px;padding:8px 10px;
+    border:1.5px solid var(--grid-light);border-radius:var(--radius);
+    cursor:pointer;transition:all 0.15s;background:var(--surface);
+    white-space:nowrap;flex-shrink:0;
+    animation:chipIn 0.2s ease-out;
+  }
+  @keyframes chipIn{from{opacity:0;transform:translateX(-8px);}to{opacity:1;transform:translateX(0);}}
+  .asset-bar-card:hover{border-color:var(--text-secondary);background:var(--bg);}
+  .asset-bar-card.active{border-color:var(--select);background:rgba(55,138,221,0.04);}
+  .asset-bar-card.hidden{display:none;}
+  .abc-swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0;border:1px solid rgba(0,0,0,0.08);}
+  .abc-name{font-size:12px;font-weight:500;color:var(--text-primary);}
+  .abc-meta{font-family:'DM Mono',monospace;font-size:10px;color:var(--text-tertiary);}
+  .abc-del{
+    width:16px;height:16px;border:none;background:none;cursor:pointer;
+    color:var(--text-tertiary);font-size:11px;display:flex;align-items:center;justify-content:center;
+    border-radius:3px;transition:all 0.1s;flex-shrink:0;margin-left:2px;
+  }
+  .abc-del:hover{color:var(--danger);background:rgba(226,75,74,0.08);}
+
+  /* ── Variant Side Panel (30% viewport) ── */
+  .variant-side{
+    position:absolute;top:0;left:0;bottom:0;width:0;
+    background:var(--surface);border-right:1px solid var(--grid-light);
+    z-index:25;overflow-y:auto;overflow-x:hidden;
+    transition:width 0.3s ease;
+    display:flex;flex-direction:column;
+  }
+  .variant-side.visible{width:30%;}
+  .variant-side-header{
+    padding:16px 20px 12px;border-bottom:1px solid var(--grid-light);
+    display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+  }
+  .variant-side-title{font-size:14px;font-weight:600;color:var(--text-primary);}
+  .variant-side-sub{font-family:'DM Mono',monospace;font-size:10px;color:var(--text-tertiary);margin-top:2px;}
+  .variant-side-confirm{
+    border:none;background:var(--select);cursor:pointer;color:#fff;
+    font-family:'DM Sans',sans-serif;font-size:11px;font-weight:500;
+    padding:5px 14px;border-radius:4px;transition:all 0.1s;
+  }
+  .variant-side-confirm:hover{background:#2B6DB8;}
+  .variant-side-list{flex:1;overflow-y:auto;padding:12px;}
+  .variant-opt{
+    display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:4px;
+    border-radius:var(--radius-lg);border:1.5px solid transparent;background:none;
+    cursor:pointer;transition:all 0.12s;font-family:'DM Sans',sans-serif;
+    font-size:13px;color:var(--text-primary);text-align:left;width:100%;
+  }
+  .variant-opt:hover{background:var(--bg);}
+  .variant-opt.active{border-color:var(--select);background:rgba(55,138,221,0.06);}
+  .variant-swatch{width:24px;height:24px;border-radius:6px;flex-shrink:0;border:1px solid rgba(0,0,0,0.1);}
+
+  #threeCanvas{display:block;width:100%;height:100%;}
+  .view-controls{display:flex;align-items:center;gap:4px;background:var(--bg);border-radius:var(--radius);padding:2px;}
+  .view-btn{font-family:'DM Mono',monospace;font-size:10px;padding:4px 10px;border:none;border-radius:4px;background:transparent;color:var(--text-secondary);cursor:pointer;transition:all 0.15s;}
+  .view-btn.active{background:var(--surface);color:var(--text-primary);box-shadow:0 1px 2px rgba(0,0,0,0.08);}
+  .picker-overlay{position:absolute;top:0;left:0;right:0;bottom:0;z-index:25;}
+
+  /* ── Open Card (in-scene detail card) ── */
+  .open-card{
+    position:absolute;z-index:20;
+    background:var(--surface);border:1.5px solid var(--select);
+    border-radius:var(--radius-lg);padding:16px;width:200px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.12);
+    animation:cardIn 0.2s ease-out;
+    pointer-events:auto;
+  }
+  @keyframes cardIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+  .open-card-title{font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text-primary);}
+  .open-card-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;color:var(--text-secondary);}
+  .open-card-row .oc-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--text-tertiary);min-width:50px;}
+  .open-card-swatch{width:14px;height:14px;border-radius:3px;}
+  .open-card-actions{display:flex;gap:6px;margin-top:12px;border-top:1px solid var(--grid-light);padding-top:10px;}
+  .open-card-actions .ctx-btn{flex:1;text-align:center;}
+
+  /* Color picker */
+  .color-picker-row{margin-top:10px;border-top:1px solid var(--grid-light);padding-top:10px;}
+  .color-picker-label{font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:6px;}
+  .color-picker-swatches{display:flex;flex-wrap:wrap;gap:5px;max-width:162px;}
+  .color-pick{
+    width:22px;height:22px;border-radius:5px;border:2px solid transparent;
+    cursor:pointer;transition:all 0.1s;flex-shrink:0;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,0.08);
+  }
+  .color-pick:hover{transform:scale(1.15);}
+  .color-pick.active{border-color:var(--select);box-shadow:0 0 0 2px rgba(55,138,221,0.25),inset 0 0 0 1px rgba(0,0,0,0.08);}
+  .place-menu-overlay{position:absolute;top:0;left:0;right:0;bottom:0;z-index:25;}
+  .place-menu{
+    position:absolute;z-index:30;background:var(--surface);border:1px solid var(--grid-light);
+    border-radius:var(--radius-lg);padding:4px;min-width:140px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.12),0 0 0 1px rgba(0,0,0,0.04);
+    display:flex;flex-direction:column;gap:2px;
+    animation:menuIn 0.1s ease-out;
+  }
+  @keyframes menuIn{from{opacity:0;transform:scale(0.95);}to{opacity:1;transform:scale(1);}}
+  .place-menu-item{
+    display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--radius);
+    border:none;background:none;cursor:pointer;transition:all 0.1s;
+    font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;
+    color:var(--text-primary);text-align:left;width:100%;
+  }
+  .place-menu-item:hover{background:var(--bg);}
+  .pm-swatch{width:12px;height:12px;border-radius:2px;border:1.5px solid;flex-shrink:0;}
+  .pm-size{font-family:'DM Mono',monospace;font-size:10px;color:var(--text-tertiary);margin-left:auto;}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Furniture Configurator</h1><div class="subtitle">Click to place → pick type · drag to move</div></div>
+  <div class="header-right">
+    <div class="view-controls">
+      <button class="view-btn active" onclick="setView('top')" id="btn-top">Top</button>
+      <button class="view-btn" onclick="setView('angle')" id="btn-angle">Angle</button>
+    </div>
+    <div class="status-pill" id="itemCount">0 items</div>
+    <button class="btn danger" onclick="clearAll()">Clear all</button>
+  </div>
+</header>
+<div class="workspace">
+  <div class="asset-bar" id="assetBar">
+    <div id="assetBarCards"></div>
+  </div>
+  <div class="canvas-area" id="canvasArea">
+    <canvas id="threeCanvas"></canvas>
+    <div class="variant-side" id="variantSide">
+      <div class="variant-side-header">
+        <div><div class="variant-side-title" id="variantSideTitle">Variants</div><div class="variant-side-sub" id="variantSideSub"></div></div>
+        <button class="variant-side-confirm" onclick="exitVariantSelection()">Confirm</button>
+      </div>
+      <div class="variant-side-list" id="variantSideList"></div>
+    </div>
+    <div class="open-card" id="openCard" style="display:none;"></div>
+    <div class="place-menu-overlay" id="placeMenuOverlay" style="display:none;" onclick="closePlaceMenu()"></div>
+    <div class="place-menu" id="placeMenu" style="display:none;">
+      <button class="place-menu-item" onmouseenter="previewType('chair')" onclick="placeFromMenu('chair')"><span class="pm-swatch" style="background:#E6F1FB;border-color:#85B7EB;"></span>Chair<span class="pm-size">3×3</span></button>
+      <button class="place-menu-item" onmouseenter="previewType('sofa')" onclick="placeFromMenu('sofa')"><span class="pm-swatch" style="background:#E1F5EE;border-color:#5DCAA5;"></span>Sofa<span class="pm-size">9×3</span></button>
+      <button class="place-menu-item" onmouseenter="previewType('sectional')" onclick="placeFromMenu('sectional')"><span class="pm-swatch" style="background:#EEEDFE;border-color:#AFA9EC;"></span>Sectional<span class="pm-size">9×9</span></button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════
+//  CONFIG
+// ══════════════════════════════════════════════════════════════
+const GRID_COLS=3, GRID_ROWS=4, PANEL_CELLS=4;
+const TOTAL_W=GRID_COLS*PANEL_CELLS, TOTAL_H=GRID_ROWS*PANEL_CELLS;
+const DEFAULT_PAD=1;
+
+const FURNITURE={
+  null:      {w:4,h:4,height:0.02,color:0xB4B2A9,accent:0x888780,isNull:true,padMode:'default'},
+  chair:     {w:3,h:3,height:0.35,color:0x378ADD,accent:0x185FA5,padMode:'full'},
+  sofa:      {w:9,h:3,height:0.30,color:0x1D9E75,accent:0x0F6E56,padMode:'halfDepth'},
+  sectional: {w:9,h:9,height:0.30,color:0x7F77DD,accent:0x534AB7,lShape:true,padMode:'corner'},
+};
+
+const SECT_PAD = 2; // sectional mount extends 2 units from each adjacent wall
+
+const CATEGORIES = [
+  { type:'chair', name:'Chair', size:'3×3', color:'#E6F1FB', swatch:'#185FA5' },
+  { type:'sofa', name:'Sofa', size:'9×3', color:'#E1F5EE', swatch:'#0F6E56' },
+  { type:'sectional', name:'Sectional', size:'9×9', color:'#EEEDFE', swatch:'#534AB7' },
+];
+
+const VARIANTS = {
+  chair: [
+    { id:'ch-eames-lounge', name:'Eames Lounge', brand:'Herman Miller', color:0x2C2C2A, accent:0x1A1A18, material:'Leather' },
+    { id:'ch-wishbone', name:'Wishbone CH24', brand:'Carl Hansen', color:0xC4A872, accent:0x8B7645, material:'Oak' },
+    { id:'ch-egg', name:'Egg Chair', brand:'Fritz Hansen', color:0x8B5E3C, accent:0x6B4530, material:'Leather' },
+    { id:'ch-barcelona', name:'Barcelona', brand:'Knoll', color:0x1A1A1A, accent:0x333333, material:'Leather' },
+    { id:'ch-tulip', name:'Tulip Armchair', brand:'Knoll', color:0xF0F0F0, accent:0xCCCCCC, material:'Fabric' },
+    { id:'ch-shell', name:'Shell Chair', brand:'Hans Wegner', color:0xD4B896, accent:0xA08060, material:'Walnut' },
+    { id:'ch-lc2', name:'LC2 Petit', brand:'Cassina', color:0x2C2C2C, accent:0x444444, material:'Leather' },
+    { id:'ch-panton', name:'Panton Chair', brand:'Vitra', color:0xCC3333, accent:0xAA2222, material:'Plastic' },
+    { id:'ch-diamond', name:'Diamond Chair', brand:'Knoll', color:0x888888, accent:0x666666, material:'Wire' },
+    { id:'ch-pp501', name:'The Chair PP501', brand:'PP Møbler', color:0x9B7B55, accent:0x7A5E40, material:'Oak' },
+    { id:'ch-coconut', name:'Coconut Chair', brand:'Vitra', color:0xEEEEEE, accent:0x222222, material:'Leather' },
+    { id:'ch-ox', name:'Ox Chair', brand:'Fredericia', color:0x6B4226, accent:0x4A2E1A, material:'Leather' },
+    { id:'ch-swan', name:'Swan Chair', brand:'Fritz Hansen', color:0x87A96B, accent:0x5F7A4A, material:'Fabric' },
+    { id:'ch-womb', name:'Womb Chair', brand:'Knoll', color:0xC45550, accent:0xA03838, material:'Fabric' },
+    { id:'ch-ch07', name:'Shell Lounge CH07', brand:'Carl Hansen', color:0xB89470, accent:0x8B6E50, material:'Walnut' },
+    { id:'ch-flag', name:'Flag Halyard', brand:'PP Møbler', color:0xD5C8B0, accent:0xA09880, material:'Steel/Flag' },
+    { id:'ch-corona', name:'Corona Chair', brand:'Erik Jørgensen', color:0x36454F, accent:0x252F36, material:'Leather' },
+    { id:'ch-pk22', name:'PK22', brand:'Fritz Hansen', color:0xA08060, accent:0x7A6045, material:'Leather' },
+    { id:'ch-ch25', name:'Easy Chair CH25', brand:'Carl Hansen', color:0x8B7355, accent:0x6B5540, material:'Oak/Paper cord' },
+    { id:'ch-pelican', name:'Pelican Chair', brand:'Finn Juhl', color:0x7B4A6E, accent:0x5C3752, material:'Fabric' },
+  ],
+  sofa: [
+    { id:'sf-togo', name:'Togo', brand:'Ligne Roset', color:0x1D9E75, accent:0x0F6E56, material:'Fabric' },
+    { id:'sf-florence', name:'Florence Knoll', brand:'Knoll', color:0x2C2C2C, accent:0x444444, material:'Leather' },
+    { id:'sf-mags', name:'Mags Sofa', brand:'HAY', color:0x87A96B, accent:0x5F7A4A, material:'Fabric' },
+    { id:'sf-outline', name:'Outline', brand:'Muuto', color:0x6B6B6B, accent:0x444444, material:'Fabric' },
+    { id:'sf-camaleonda', name:'Camaleonda', brand:'B&B Italia', color:0xC4A882, accent:0x9A8060, material:'Boucle' },
+    { id:'sf-como', name:'Como', brand:'Design Within Reach', color:0x36454F, accent:0x252F36, material:'Leather' },
+    { id:'sf-lc3', name:'LC3 Grand', brand:'Cassina', color:0x1A1A1A, accent:0x333333, material:'Leather' },
+    { id:'sf-marenco', name:'Marenco', brand:'Arflex', color:0xDEA5A4, accent:0xC08080, material:'Fabric' },
+    { id:'sf-bevel', name:'Bevel Sofa', brand:'Normann', color:0xE8DCC8, accent:0xC4B9A0, material:'Fabric' },
+    { id:'sf-develius', name:'Develius', brand:'&Tradition', color:0x4A7FC4, accent:0x2E5A94, material:'Fabric' },
+    { id:'sf-otto', name:'Otto', brand:'Fredericia', color:0x8B5E9B, accent:0x6B4080, material:'Velvet' },
+    { id:'sf-inland', name:'Inland', brand:'Muuto', color:0xB8B8C8, accent:0x8888A0, material:'Fabric' },
+    { id:'sf-hayward', name:'Hayward', brand:'Lulu & Georgia', color:0xC19A6B, accent:0x9A7A50, material:'Boucle' },
+    { id:'sf-bolster', name:'Bolster', brand:'Herman Miller', color:0x2C3E50, accent:0x1A252F, material:'Leather' },
+    { id:'sf-boa', name:'Boa', brand:'Massproductions', color:0x228B22, accent:0x186818, material:'Fabric' },
+    { id:'sf-melo', name:'Melo', brand:'BoConcept', color:0xD4A535, accent:0xAA8428, material:'Fabric' },
+    { id:'sf-hakola', name:'Day Sofa', brand:'Hakola', color:0xE8736C, accent:0xC45550, material:'Fabric' },
+    { id:'sf-ghost', name:'Ghost Sofa', brand:'Gervasoni', color:0xF0EDE8, accent:0xD0CCC5, material:'Linen' },
+    { id:'sf-koti', name:'Koti', brand:'Hem', color:0x1B3A5C, accent:0x122840, material:'Fabric' },
+    { id:'sf-cloud', name:'Cloud', brand:'Restoration Hardware', color:0xBEB8AB, accent:0x9A9488, material:'Linen' },
+  ],
+  sectional: [
+    { id:'sc-tufty', name:'Tufty-Time', brand:'B&B Italia', color:0x7F77DD, accent:0x534AB7, material:'Fabric' },
+    { id:'sc-como', name:'Como Sectional', brand:'Design Within Reach', color:0x36454F, accent:0x252F36, material:'Leather' },
+    { id:'sc-mags', name:'Mags Soft', brand:'HAY', color:0x87A96B, accent:0x5F7A4A, material:'Fabric' },
+    { id:'sc-alphabet', name:'Alphabet', brand:'Fritz Hansen', color:0xB8B8C8, accent:0x8888A0, material:'Fabric' },
+    { id:'sc-kelston', name:'Kelston', brand:'Design Within Reach', color:0x8B7355, accent:0x6B5540, material:'Leather' },
+    { id:'sc-carmo', name:'Carmo', brand:'BoConcept', color:0x5BA0A0, accent:0x3D7878, material:'Fabric' },
+    { id:'sc-togo', name:'Togo Corner', brand:'Ligne Roset', color:0xE8736C, accent:0xC45550, material:'Fabric' },
+    { id:'sc-develius', name:'Develius L', brand:'&Tradition', color:0x4A7FC4, accent:0x2E5A94, material:'Fabric' },
+    { id:'sc-connect', name:'Connect Soft', brand:'Muuto', color:0xE8DCC8, accent:0xC4B9A0, material:'Fabric' },
+    { id:'sc-camaleonda', name:'Camaleonda L', brand:'B&B Italia', color:0xC4A882, accent:0x9A8060, material:'Boucle' },
+    { id:'sc-cloud', name:'Cloud Sectional', brand:'Restoration Hardware', color:0xBEB8AB, accent:0x9A9488, material:'Linen' },
+    { id:'sc-otto', name:'Otto Sectional', brand:'Fredericia', color:0x8B5E9B, accent:0x6B4080, material:'Velvet' },
+    { id:'sc-ray', name:'Ray', brand:'B&B Italia', color:0x2C2C2C, accent:0x444444, material:'Leather' },
+    { id:'sc-marenco', name:'Marenco L', brand:'Arflex', color:0xDEA5A4, accent:0xC08080, material:'Fabric' },
+    { id:'sc-pyllow', name:'Pyllow', brand:'MYCS', color:0xD4A535, accent:0xAA8428, material:'Fabric' },
+    { id:'sc-surface', name:'Surface', brand:'Knoll', color:0x1A1A1A, accent:0x333333, material:'Leather' },
+    { id:'sc-mex', name:'Mex Cube', brand:'Cassina', color:0x6B4226, accent:0x4A2E1A, material:'Leather' },
+    { id:'sc-inland', name:'Inland Corner', brand:'Muuto', color:0x228B22, accent:0x186818, material:'Fabric' },
+    { id:'sc-domino', name:'Domino', brand:'Fogia', color:0x7B4A6E, accent:0x5C3752, material:'Fabric' },
+    { id:'sc-kelston-l', name:'Kelston L', brand:'Design Within Reach', color:0xC19A6B, accent:0x9A7A50, material:'Leather' },
+  ],
+};
+
+// Quadrant system:
+//   Sofas: 'top'|'bottom'|'left'|'right' (edge-based)
+//   Sectionals: 'topRight'|'bottomRight'|'bottomLeft'|'topLeft' (corner-based)
+function quadrantRot(type, q) {
+  if (FURNITURE[type].lShape) {
+    return { topRight: 0, bottomRight: 1, bottomLeft: 2, topLeft: 3 }[q] || 0;
+  }
+  return (q === 'left' || q === 'right') ? 1 : 0;
+}
+function quadrantIsHorizontal(q) { return q === 'top' || q === 'bottom'; }
+
+function oppositeQuadrant(q) {
+  return { top:'bottom', bottom:'top', left:'right', right:'left',
+           topRight:'bottomLeft', bottomLeft:'topRight',
+           topLeft:'bottomRight', bottomRight:'topLeft' }[q];
+}
+
+// Which edges are "wall" (blocked) for a given quadrant
+function quadrantWalls(q) {
+  const w = { top:false, bottom:false, left:false, right:false };
+  if (q === 'top' || q === 'topRight' || q === 'topLeft') w.top = true;
+  if (q === 'bottom' || q === 'bottomRight' || q === 'bottomLeft') w.bottom = true;
+  if (q === 'left' || q === 'topLeft' || q === 'bottomLeft') w.left = true;
+  if (q === 'right' || q === 'topRight' || q === 'bottomRight') w.right = true;
+  return w;
+}
+
+// Returns {mx, mz, mw, mh} — the mount zone based on type and quadrant
+function computeMount(type, rot, objX, objZ, quadrant) {
+  const f = FURNITURE[type];
+  const s = objSize(type, rot);
+
+  if (f.padMode === 'full') {
+    return { mx: 0, mz: 0, mw: TOTAL_W, mh: TOTAL_H };
+  }
+
+  if (f.padMode === 'halfDepth' && quadrant) {
+    switch (quadrant) {
+      case 'top':    return { mx: 0, mz: 0, mw: TOTAL_W, mh: TOTAL_H / 2 };
+      case 'bottom': return { mx: 0, mz: TOTAL_H / 2, mw: TOTAL_W, mh: TOTAL_H / 2 };
+      case 'left':   return { mx: 0, mz: 0, mw: TOTAL_W / 2, mh: TOTAL_H };
+      case 'right':  return { mx: TOTAL_W / 2, mz: 0, mw: TOTAL_W / 2, mh: TOTAL_H };
+    }
+  }
+
+  if (f.padMode === 'halfDepth') {
+    const cx = objX + s.w / 2, cz = objZ + s.h / 2;
+    const isH = s.w > s.h;
+    if (isH) {
+      return cz < TOTAL_H / 2
+        ? { mx: 0, mz: 0, mw: TOTAL_W, mh: TOTAL_H / 2 }
+        : { mx: 0, mz: TOTAL_H / 2, mw: TOTAL_W, mh: TOTAL_H / 2 };
+    } else {
+      return cx < TOTAL_W / 2
+        ? { mx: 0, mz: 0, mw: TOTAL_W / 2, mh: TOTAL_H }
+        : { mx: TOTAL_W / 2, mz: 0, mw: TOTAL_W / 2, mh: TOTAL_H };
+    }
+  }
+
+  if (f.padMode === 'corner' && quadrant) {
+    // Sectional: mount extends SECT_PAD units from each adjacent wall
+    switch (quadrant) {
+      case 'topRight':    return { mx: TOTAL_W - s.w - SECT_PAD, mz: 0, mw: s.w + SECT_PAD, mh: s.h + SECT_PAD };
+      case 'bottomRight': return { mx: TOTAL_W - s.w - SECT_PAD, mz: TOTAL_H - s.h - SECT_PAD, mw: s.w + SECT_PAD, mh: s.h + SECT_PAD };
+      case 'bottomLeft':  return { mx: 0, mz: TOTAL_H - s.h - SECT_PAD, mw: s.w + SECT_PAD, mh: s.h + SECT_PAD };
+      case 'topLeft':     return { mx: 0, mz: 0, mw: s.w + SECT_PAD, mh: s.h + SECT_PAD };
+    }
+  }
+
+  // Default: 1 unit padding
+  const mx = Math.max(0, Math.round(objX - DEFAULT_PAD));
+  const mz = Math.max(0, Math.round(objZ - DEFAULT_PAD));
+  return {
+    mx, mz,
+    mw: Math.min(s.w + DEFAULT_PAD * 2, TOTAL_W - mx),
+    mh: Math.min(s.h + DEFAULT_PAD * 2, TOTAL_H - mz),
+  };
+}
+
+// Infer quadrant from position for initial placement
+function inferQuadrant(type, rot, objX, objZ) {
+  const f = FURNITURE[type];
+  const s = objSize(type, rot);
+  const cx = objX + s.w / 2, cz = objZ + s.h / 2;
+
+  if (f.padMode === 'corner' || f.lShape) {
+    // Corner-based: which corner is closest
+    const inTop = cz < TOTAL_H / 2, inLeft = cx < TOTAL_W / 2;
+    if (inTop && !inLeft) return 'topRight';
+    if (!inTop && !inLeft) return 'bottomRight';
+    if (!inTop && inLeft) return 'bottomLeft';
+    return 'topLeft';
+  }
+
+  if (f.padMode === 'halfDepth') {
+    const isH = s.w > s.h;
+    if (isH) return cz < TOTAL_H / 2 ? 'top' : 'bottom';
+    return cx < TOTAL_W / 2 ? 'left' : 'right';
+  }
+
+  return null;
+}
+
+// Item: { type, x, z, rot, group }  — x,z are float world coords of object origin
+let items=[];
+let selected=null; // index into items[]
+
+// ══════════════════════════════════════════════════════════════
+//  THREE.JS SETUP
+// ══════════════════════════════════════════════════════════════
+const canvas=document.getElementById('threeCanvas');
+const container=document.getElementById('canvasArea');
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0xE8E6E0);
+const frustumSize=Math.max(TOTAL_W,TOTAL_H)+4;
+const aspect=container.clientWidth/container.clientHeight;
+const camera=new THREE.OrthographicCamera(-frustumSize*aspect/2,frustumSize*aspect/2,frustumSize/2,-frustumSize/2,0.1,100);
+camera.position.set(TOTAL_W/2,20,TOTAL_H/2); camera.lookAt(TOTAL_W/2,0,TOTAL_H/2);
+camera.zoom=1.4; camera.updateProjectionMatrix();
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setSize(container.clientWidth,container.clientHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+scene.add(new THREE.AmbientLight(0xffffff,0.6));
+const dirLight=new THREE.DirectionalLight(0xffffff,0.7); dirLight.position.set(10,20,8); dirLight.castShadow=true;
+dirLight.shadow.mapSize.set(2048,2048); dirLight.shadow.camera.left=-20; dirLight.shadow.camera.right=20; dirLight.shadow.camera.top=20; dirLight.shadow.camera.bottom=-20;
+scene.add(dirLight); const fl=new THREE.DirectionalLight(0xffffff,0.25); fl.position.set(-8,10,-6); scene.add(fl);
+
+// ══════════════════════════════════════════════════════════════
+//  GRID
+// ══════════════════════════════════════════════════════════════
+(function(){
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(TOTAL_W+0.3,TOTAL_H+0.3),new THREE.MeshStandardMaterial({color:0xF4F3F0,roughness:0.9}));
+  floor.rotation.x=-Math.PI/2; floor.position.set(TOTAL_W/2,-0.01,TOTAL_H/2); floor.receiveShadow=true; scene.add(floor);
+  const uM=new THREE.LineBasicMaterial({color:0xD3D1C7});
+  for(let i=0;i<=TOTAL_W;i++) scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(i,0,0),new THREE.Vector3(i,0,TOTAL_H)]),uM));
+  for(let j=0;j<=TOTAL_H;j++) scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,j),new THREE.Vector3(TOTAL_W,0,j)]),uM));
+  const pM=new THREE.MeshBasicMaterial({color:0x888780});
+  for(let i=0;i<=GRID_COLS;i++){const m=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.02,TOTAL_H+0.04),pM);m.position.set(i*PANEL_CELLS,0.005,TOTAL_H/2);scene.add(m);}
+  for(let j=0;j<=GRID_ROWS;j++){const m=new THREE.Mesh(new THREE.BoxGeometry(TOTAL_W+0.04,0.02,0.04),pM);m.position.set(TOTAL_W/2,0.005,j*PANEL_CELLS);scene.add(m);}
+})();
+
+// ══════════════════════════════════════════════════════════════
+//  SIZE + COLLISION
+// ══════════════════════════════════════════════════════════════
+function objSize(type,rot){const f=FURNITURE[type];return(rot||0)%2===0?{w:f.w,h:f.h}:{w:f.h,h:f.w};}
+
+function getAABBs(item){
+  const s=objSize(item.type,item.rot);
+  const f=FURNITURE[item.type];
+  if(f.lShape){
+    const arm=Math.max(1,Math.round(Math.min(s.w,s.h)/3));
+    const r4=(item.rot||0)%4;
+    if(r4===0) return[{x:item.x,z:item.z,w:s.w,h:arm},{x:item.x+s.w-arm,z:item.z+arm,w:arm,h:s.h-arm}];
+    if(r4===1) return[{x:item.x+s.w-arm,z:item.z,w:arm,h:s.h},{x:item.x,z:item.z+s.h-arm,w:s.w-arm,h:arm}];
+    if(r4===2) return[{x:item.x,z:item.z+s.h-arm,w:s.w,h:arm},{x:item.x,z:item.z,w:arm,h:s.h-arm}];
+    return[{x:item.x,z:item.z,w:arm,h:s.h},{x:item.x+arm,z:item.z,w:s.w-arm,h:arm}];
+  }
+  return[{x:item.x,z:item.z,w:s.w,h:s.h}];
+}
+
+function overlap(a,b){const e=0.01;return a.x<b.x+b.w-e&&a.x+a.w>b.x+e&&a.z<b.z+b.h-e&&a.z+a.h>b.z+e;}
+
+function collides(item,excludeIdx){
+  const aa=getAABBs(item);
+  for(const a of aa){if(a.x<-0.01||a.z<-0.01||a.x+a.w>TOTAL_W+0.01||a.z+a.h>TOTAL_H+0.01) return true;}
+  for(let i=0;i<items.length;i++){
+    if(i===excludeIdx) continue;
+    const bb=getAABBs(items[i]);
+    for(const a of aa) for(const b of bb) if(overlap(a,b)) return true;
+  }
+  return false;
+}
+
+function pointHit(px,pz,item){return getAABBs(item).some(a=>px>=a.x&&px<a.x+a.w&&pz>=a.z&&pz<a.z+a.h);}
+function findItemAt(px,pz){for(let i=items.length-1;i>=0;i--) if(pointHit(px,pz,items[i])) return i; return -1;}
+
+// MTV resolution — nudge position until clear
+function getMTV(a,b){
+  const ol=(a.x+a.w)-b.x, or2=(b.x+b.w)-a.x, ot=(a.z+a.h)-b.z, ob=(b.z+b.h)-a.z;
+  const mx=ol<or2?-ol:or2, mz=ot<ob?-ot:ob;
+  return Math.abs(mx)<Math.abs(mz)?{dx:mx,dz:0}:{dx:0,dz:mz};
+}
+
+function resolvePosition(type, idealX, idealZ, rot, excludeIdx){
+  let x=idealX, z=idealZ;
+  const s=objSize(type,rot);
+  // Clamp to grid bounds
+  x=Math.max(0,Math.min(TOTAL_W-s.w,x));
+  z=Math.max(0,Math.min(TOTAL_H-s.h,z));
+
+  for(let iter=0;iter<20;iter++){
+    const temp={type,x,z,rot};
+    const aa=getAABBs(temp);
+    // Bounds
+    let oob=false;
+    for(const a of aa){
+      if(a.x<0){x+=-a.x+0.02;oob=true;break;}
+      if(a.z<0){z+=-a.z+0.02;oob=true;break;}
+      if(a.x+a.w>TOTAL_W){x-=(a.x+a.w-TOTAL_W)+0.02;oob=true;break;}
+      if(a.z+a.h>TOTAL_H){z-=(a.z+a.h-TOTAL_H)+0.02;oob=true;break;}
+    }
+    if(oob){x=Math.max(0,Math.min(TOTAL_W-s.w,x));z=Math.max(0,Math.min(TOTAL_H-s.h,z));continue;}
+
+    // Body collisions
+    let hit=false;
+    const aa2=getAABBs({type,x,z,rot});
+    for(let i=0;i<items.length;i++){
+      if(i===excludeIdx) continue;
+      const bb=getAABBs(items[i]);
+      for(const a of aa2) for(const b of bb){
+        if(overlap(a,b)){
+          const m=getMTV(a,b);
+          x+=m.dx+Math.sign(m.dx||0.001)*0.02;
+          z+=m.dz+Math.sign(m.dz||0.001)*0.02;
+          hit=true; break;
+        }
+        if(hit) break;
+      }
+      if(hit) break;
+    }
+    if(!hit){
+      x=Math.max(0,Math.min(TOTAL_W-s.w,x));
+      z=Math.max(0,Math.min(TOTAL_H-s.h,z));
+      if(!collides({type,x,z,rot},excludeIdx>=0?excludeIdx:-1)) return{x,z,ok:true};
+      return{ok:false};
+    }
+    x=Math.max(0,Math.min(TOTAL_W-s.w,x));
+    z=Math.max(0,Math.min(TOTAL_H-s.h,z));
+  }
+  return{ok:false};
+}
+
+// ══════════════════════════════════════════════════════════════
+//  3D MESH BUILDERS
+// ══════════════════════════════════════════════════════════════
+function createPadVis(pw,ph,sel){
+  const g=new THREE.Group();
+  const c=sel?0x378ADD:0xB4B2A9;
+  const pm=new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:sel?0.1:0.04,depthWrite:false});
+  const p=new THREE.Mesh(new THREE.PlaneGeometry(pw,ph),pm);
+  p.rotation.x=-Math.PI/2;p.position.set(pw/2,0.003,ph/2);g.add(p);
+  const lm=new THREE.LineBasicMaterial({color:c,transparent:true,opacity:sel?0.3:0.15});
+  const pts=[new THREE.Vector3(0,0.008,0),new THREE.Vector3(pw,0.008,0),new THREE.Vector3(pw,0.008,ph),new THREE.Vector3(0,0.008,ph),new THREE.Vector3(0,0.008,0)];
+  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),lm));
+  return g;
+}
+
+function createFurnitureMesh(type,w,h,rot,colorOverride,accentOverride){
+  const f=FURNITURE[type],g=new THREE.Group();
+  const mm=new THREE.MeshStandardMaterial({color:colorOverride||f.color,roughness:0.5,metalness:0.05});
+  const am=new THREE.MeshStandardMaterial({color:accentOverride||f.accent,roughness:0.3,metalness:0.1});
+  const ht=f.height,ins=0.06;
+  function addMesh(geo,mat,x,y,z){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;g.add(m);return m;}
+
+  if(type==='null'){
+    // Transparent gray placeholder
+    const nm=new THREE.MeshStandardMaterial({color:0xB4B2A9,transparent:true,opacity:0.2,roughness:0.9});
+    addMesh(new THREE.BoxGeometry(w-ins*2,ht,h-ins*2),nm,w/2,ht/2,h/2);
+    const xm=new THREE.LineBasicMaterial({color:0x888780,transparent:true,opacity:0.35});
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(ins+0.2,ht+0.005,ins+0.2),new THREE.Vector3(w-ins-0.2,ht+0.005,h-ins-0.2)]),xm));
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(w-ins-0.2,ht+0.005,ins+0.2),new THREE.Vector3(ins+0.2,ht+0.005,h-ins-0.2)]),xm));
+    return g;
+  } else if(type==='chair'){
+    const lr=Math.max(0.04,w*0.03),li=Math.max(0.15,w*0.1);
+    addMesh(new THREE.BoxGeometry(w-ins*2,0.08,h-ins*2),mm,w/2,ht*0.55,h/2);
+    addMesh(new THREE.BoxGeometry(w-ins*2,ht*0.5,0.12),am,w/2,ht*0.75,ins+0.06);
+    const lg=new THREE.CylinderGeometry(lr,lr,ht*0.55,8);
+    [[ins+li,ins+li],[w-ins-li,ins+li],[ins+li,h-ins-li],[w-ins-li,h-ins-li]].forEach(([lx,lz])=>{addMesh(lg,am,lx,ht*0.55/2,lz);});
+  } else if(type==='sofa'){
+    const aw=Math.max(0.15,h*0.08),bd=Math.max(0.18,h*0.08);
+    addMesh(new THREE.BoxGeometry(w-ins*2,ht*0.5,h-ins*2),mm,w/2,ht*0.25,h/2);
+    addMesh(new THREE.BoxGeometry(w-ins*2,ht*0.6,bd),am,w/2,ht*0.55,ins+bd/2);
+    const ag=new THREE.BoxGeometry(aw,ht*0.5,h-ins*2);
+    addMesh(ag,am,ins+aw/2,ht*0.35,h/2);
+    addMesh(ag,am,w-ins-aw/2,ht*0.35,h/2);
+    const nc=Math.max(2,Math.round(w/3)),lw=(w-ins*2-aw*2)/nc;
+    for(let i=0;i<nc;i++) addMesh(new THREE.BoxGeometry(lw-0.06,0.04,h-ins*2-bd-0.1),new THREE.MeshStandardMaterial({color:f.color,roughness:0.6}),ins+aw+lw/2+i*lw,ht*0.52,h/2+bd/4);
+  } else if(type==='sectional'){
+    const cH=ht*0.5,arm=Math.max(1,Math.round(Math.min(w,h)/3));
+    addMesh(new THREE.BoxGeometry(w-ins*2,cH,arm-ins*2),mm,w/2,cH/2,arm/2);
+    addMesh(new THREE.BoxGeometry(w-ins*2,ht*0.6,0.16),am,w/2,ht*0.55,ins+0.08);
+    const ncl=Math.max(2,Math.round(w/3)),cw=(w-ins*2-0.1)/ncl;
+    for(let i=0;i<ncl;i++) addMesh(new THREE.BoxGeometry(cw-0.06,0.04,arm-ins*2-0.2),new THREE.MeshStandardMaterial({color:f.color,roughness:0.6}),ins+0.05+cw/2+i*cw,cH+0.02,arm/2+0.04);
+    const cl=h-arm;
+    addMesh(new THREE.BoxGeometry(arm-ins*2,cH,cl-ins),mm,w-arm/2,cH/2,arm+cl/2-ins/2);
+    addMesh(new THREE.BoxGeometry(0.16,ht*0.6,cl-ins),am,w-ins-0.08,ht*0.55,arm+cl/2-ins/2);
+    const ncc=Math.max(2,Math.round(cl/3)),ch2=(cl-ins-0.1)/ncc;
+    for(let i=0;i<ncc;i++) addMesh(new THREE.BoxGeometry(arm-ins*2-0.2,0.04,ch2-0.06),new THREE.MeshStandardMaterial({color:f.color,roughness:0.6}),w-arm/2,cH+0.02,arm+ins/2+0.05+ch2/2+i*ch2);
+    addMesh(new THREE.BoxGeometry(0.15,ht*0.35,arm-ins*2),am,ins+0.075,ht*0.3,arm/2);
+    addMesh(new THREE.BoxGeometry(arm-ins*2,ht*0.35,0.15),am,w-arm/2,ht*0.3,h-ins-0.075);
+    const ps=Math.min(0.5,arm*0.2),pMat=new THREE.MeshStandardMaterial({color:0xF4F3F0,roughness:0.8});
+    const p1=addMesh(new THREE.BoxGeometry(ps,ps*0.5,ps),pMat,w-arm+ps+0.1,cH+ps*0.3,arm-ps-0.1);p1.rotation.y=0.3;
+    const p2=addMesh(new THREE.BoxGeometry(ps*0.85,ps*0.3,ps*0.85),new THREE.MeshStandardMaterial({color:f.accent,roughness:0.7}),ins+ps+0.2,cH+ps*0.25,ins+ps+0.1);p2.rotation.y=-0.2;
+  }
+  // L-shape rotation
+  if(f.lShape&&rot>0){
+    const cx=w/2,cz=h/2;
+    g.children.forEach(ch=>{ch.position.x-=cx;ch.position.z-=cz;});
+    const wr=new THREE.Group();wr.add(g);g.rotation.y=-rot*Math.PI/2;
+    const outer=new THREE.Group();outer.add(wr);wr.position.set(cx,0,cz);return outer;
+  }
+  return g;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ITEM MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+// Mount model:
+//   mountX, mountZ, mountW, mountH = fixed zone on grid
+//   offX, offZ = object position relative to mount origin
+//   world position: x = mountX + offX,  z = mountZ + offZ
+//   offset range: [0, mountW - objW] x [0, mountH - objH]
+// ══════════════════════════════════════════════════════════════
+
+function itemPos(item) {
+  return { x: item.mountX + item.offX, z: item.mountZ + item.offZ };
+}
+
+function syncItemPos(item) {
+  const p = itemPos(item);
+  item.x = p.x; item.z = p.z;
+}
+
+function maxOff(item) {
+  const s = objSize(item.type, item.rot);
+  return { maxX: item.mountW - s.w, maxZ: item.mountH - s.h };
+}
+
+function buildItemGroup(item, idx) {
+  const s = objSize(item.type, item.rot);
+  const sel = selected === idx;
+  const g = new THREE.Group();
+
+  const mountVis = createPadVis(item.mountW, item.mountH, sel);
+  mountVis.position.set(item.mountX, 0, item.mountZ);
+  g.add(mountVis);
+
+  syncItemPos(item);
+  const fmGroup = new THREE.Group();
+  fmGroup.position.set(item.x, 0, item.z);
+  // Get variant colors, with optional color override
+  const v = item.variant && VARIANTS[item.type] ? VARIANTS[item.type].find(vv => vv.id === item.variant) : null;
+  const baseColor = v ? v.color : undefined;
+  const baseAccent = v ? v.accent : undefined;
+  const finalColor = item.colorOverride !== undefined && item.colorOverride !== null ? item.colorOverride : baseColor;
+  const finalAccent = item.accentOverride !== undefined && item.accentOverride !== null ? item.accentOverride : baseAccent;
+  const fm = createFurnitureMesh(item.type, s.w, s.h, item.rot, finalColor, finalAccent);
+  fm.traverse(c => { if (c.isMesh) c.castShadow = true; });
+  fmGroup.add(fm);
+  g.add(fmGroup);
+  return g;
+}
+
+function rebuildAll() { items.forEach((it, i) => { if (it.group) scene.remove(it.group); it.group = buildItemGroup(it, i); scene.add(it.group); }); }
+
+function placeItem(type, x, z, rot) {
+  const s = objSize(type, rot || 0);
+  const f = FURNITURE[type];
+  const hasQuadrant = f.padMode === 'halfDepth' || f.padMode === 'corner';
+  const quadrant = hasQuadrant ? inferQuadrant(type, rot || 0, x, z) : null;
+  const actualRot = (f.padMode === 'corner' && quadrant) ? quadrantRot(type, quadrant) : (rot || 0);
+  const actualS = objSize(type, actualRot);
+  const mt = computeMount(type, actualRot, x, z, quadrant);
+  const offX = Math.max(0, Math.min(mt.mw - actualS.w, x - mt.mx));
+  const offZ = Math.max(0, Math.min(mt.mh - actualS.h, z - mt.mz));
+  const defaultVariant = VARIANTS[type] ? VARIANTS[type][0].id : null;
+  const item = { type, x: mt.mx + offX, z: mt.mz + offZ, rot: actualRot,
+    mountX: mt.mx, mountZ: mt.mz, mountW: mt.mw, mountH: mt.mh,
+    offX, offZ, quadrant, variant: defaultVariant, group: null };
+  items.push(item);
+  item.group = buildItemGroup(item, items.length - 1);
+  scene.add(item.group);
+  updateCount();
+  renderAssetBar();
+  return items.length - 1;
+}
+
+function removeItem(idx){
+  if(items[idx].group)scene.remove(items[idx].group);
+  items.splice(idx,1);
+  if(selected===idx){selected=null;cardOpen=false;document.getElementById('openCard').style.display='none';if(savedCameraState)animateCameraRestore();}
+  else if(selected>idx)selected--;
+  rebuildAll();updateCount();renderDynPanel();
+}
+
+function selectItem(idx){selected=idx;rebuildAll();updateCtx();openCard(idx);updateAssetBarSelection();}
+function deselect(){
+  if(variantSelectionActive) exitVariantSelection();
+  selected=null;rebuildAll();updateCtx();closeCard();updateAssetBarSelection();
+}
+function deleteSelected(){if(selected!==null)removeItem(selected);}
+
+function updateAssetBarSelection() {
+  const cards = document.querySelectorAll('#assetBarCards .asset-bar-card');
+  const confirmed = items.filter(it => it.type !== 'null');
+  cards.forEach((card, i) => {
+    const idx = items.indexOf(confirmed[i]);
+    card.classList.toggle('active', idx === selected);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  OPEN CARD (in-scene detail card on selection)
+// ══════════════════════════════════════════════════════════════
+let cardOpen = false;
+let savedCameraState = null;
+
+const COLOR_PALETTE = [
+  { color:0x2C2C2A, accent:0x1A1A18, name:'Black' },
+  { color:0x6B6B6B, accent:0x444444, name:'Grey' },
+  { color:0xF0F0F0, accent:0xCCCCCC, name:'White' },
+  { color:0xE8DCC8, accent:0xC4B9A0, name:'Ivory' },
+  { color:0xC19A6B, accent:0x9A7A50, name:'Camel' },
+  { color:0x6B4226, accent:0x4A2E1A, name:'Cognac' },
+  { color:0xCC3333, accent:0xAA2222, name:'Red' },
+  { color:0xDEA5A4, accent:0xC08080, name:'Blush' },
+  { color:0x87A96B, accent:0x5F7A4A, name:'Sage' },
+  { color:0x378ADD, accent:0x185FA5, name:'Blue' },
+  { color:0x1B3A5C, accent:0x122840, name:'Navy' },
+  { color:0x8B5E9B, accent:0x6B4080, name:'Plum' },
+];
+
+function openCard(idx) {
+  const it = items[idx];
+  if (!it || it.type === 'null') { closeCard(); return; }
+
+  const s = objSize(it.type, it.rot);
+  const cat = CATEGORIES.find(c => c.type === it.type);
+
+  // Build card content
+  const card = document.getElementById('openCard');
+  const variants = VARIANTS[it.type] || [];
+  const currentVariant = variants.find(v => v.id === it.variant);
+
+  // Determine current active color
+  const activeColor = it.colorOverride !== undefined && it.colorOverride !== null
+    ? it.colorOverride
+    : (currentVariant ? currentVariant.color : null);
+
+  const colorSwatches = COLOR_PALETTE.map(c => {
+    const hex = '#' + c.color.toString(16).padStart(6, '0');
+    const isActive = activeColor === c.color;
+    return `<div class="color-pick ${isActive ? 'active' : ''}" style="background:${hex}" title="${c.name}" onclick="setItemColor(0x${c.color.toString(16).padStart(6,'0')},0x${c.accent.toString(16).padStart(6,'0')})"></div>`;
+  }).join('');
+
+  card.innerHTML = `
+    <div class="open-card-title">${currentVariant ? currentVariant.name : it.type[0].toUpperCase() + it.type.slice(1)}</div>
+    ${currentVariant ? `<div class="open-card-row"><span class="oc-label">Brand</span><span>${currentVariant.brand}</span></div>` : ''}
+    <div class="color-picker-row">
+      <div class="color-picker-label">Color</div>
+      <div class="color-picker-swatches">${colorSwatches}</div>
+    </div>
+    <div class="open-card-actions">
+      ${variants.length > 0 ? `<button class="ctx-btn" onclick="enterVariantSelection()">Change variant</button>` : ''}
+      <button class="ctx-btn del" onclick="deleteSelected()">Delete</button>
+    </div>
+  `;
+
+  // Card always on left side of object
+  const objCenterX = it.x + s.w / 2;
+  const objCenterZ = it.z + s.h / 2;
+
+  const objScreen = worldToScreen(objCenterX, objCenterZ);
+  const cardW = 200;
+  const gap = 24;
+
+  const objLeft = worldToScreen(it.x, objCenterZ);
+  let cardLeft = objLeft.x - cardW - gap;
+
+  card.style.display = 'block';
+  const cardH = card.offsetHeight;
+  const cardTop = objScreen.y - cardH / 2;
+
+  const rect = document.getElementById('canvasArea').getBoundingClientRect();
+  card.style.left = Math.max(8, Math.min(rect.width - cardW - 8, cardLeft)) + 'px';
+  card.style.top = Math.max(8, Math.min(rect.height - cardH - 8, cardTop)) + 'px';
+
+  if (!cardOpen) {
+    animateCameraToItem(it, () => fitCardAndNudge(it, card));
+  } else {
+    repositionCard(it);
+  }
+  cardOpen = true;
+}
+
+function fitCardAndNudge(it, card) {
+  const s = objSize(it.type, it.rot);
+  const objCenterZ = it.z + s.h / 2;
+  const cardW = 200;
+  const gap = 24;
+
+  // Card sits 16px from canvas left edge at minimum
+  const minCardLeft = 16;
+
+  // Where would the card be with camera centered on object?
+  const objLeftScreen = worldToScreen(it.x, objCenterZ);
+  let cardLeft = objLeftScreen.x - cardW - gap;
+
+  if (cardLeft >= minCardLeft) {
+    // Card fits — just position it, no nudge needed
+    positionCardAt(it, card);
+    return;
+  }
+
+  // Card doesn't fit — nudge camera so card sits at minCardLeft
+  const targetObjLeftScreen = minCardLeft + cardW + gap;
+  const pixelShift = targetObjLeftScreen - objLeftScreen.x;
+
+  const canvasW = document.getElementById('canvasArea').clientWidth;
+  const viewW = (camera.right - camera.left) / camera.zoom;
+  const worldShift = (pixelShift / canvasW) * viewW;
+
+  const targetCX = camera.position.x - worldShift;
+  const startX = camera.position.x;
+  const duration = 200;
+  const startTime = performance.now();
+
+  function tick(now) {
+    const t = Math.min(1, (now - startTime) / duration);
+    const ease = 1 - Math.pow(1 - t, 3);
+    camera.position.x = startX + (targetCX - startX) * ease;
+    camera.lookAt(camera.position.x, 0, camera.position.z);
+    camera.up.set(0, 0, -1);
+    camera.updateProjectionMatrix();
+    positionCardAt(it, card);
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function positionCardAt(it, card) {
+  const s = objSize(it.type, it.rot);
+  const objCenterX = it.x + s.w / 2;
+  const objCenterZ = it.z + s.h / 2;
+  const cardW = 200;
+  const gap = 24;
+
+  const objLeft = worldToScreen(it.x, objCenterZ);
+  let cardLeft = objLeft.x - cardW - gap;
+
+  const objScreen = worldToScreen(objCenterX, objCenterZ);
+  const cardH = card.offsetHeight;
+  const cardTop = objScreen.y - cardH / 2;
+
+  const rect = document.getElementById('canvasArea').getBoundingClientRect();
+  card.style.left = Math.max(8, Math.min(rect.width - cardW - 8, cardLeft)) + 'px';
+  card.style.top = Math.max(8, Math.min(rect.height - cardH - 8, cardTop)) + 'px';
+}
+
+function closeCard() {
+  const openCardEl = document.getElementById('openCard');
+  openCardEl.style.display = 'none';
+
+  if (cardOpen && savedCameraState) {
+    animateCameraRestore();
+  }
+  cardOpen = false;
+}
+
+function setItemColor(color, accent) {
+  if (selected === null) return;
+  const it = items[selected];
+  it.colorOverride = color;
+  it.accentOverride = accent;
+
+  // Rebuild 3D mesh
+  if (it.group) scene.remove(it.group);
+  it.group = buildItemGroup(it, selected);
+  scene.add(it.group);
+
+  // Update active swatch in card without full rebuild
+  document.querySelectorAll('#openCard .color-pick').forEach(el => {
+    const bg = el.style.background;
+    const hexStr = '#' + color.toString(16).padStart(6, '0');
+    el.classList.toggle('active', bg === hexStr);
+  });
+
+  // Update type swatch in card
+  const typeSwatch = document.querySelector('#openCard .open-card-swatch');
+  if (typeSwatch) typeSwatch.style.background = '#' + color.toString(16).padStart(6, '0');
+
+  // Update asset bar swatch
+  renderAssetBar();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  VARIANT SELECTION STATE
+// ══════════════════════════════════════════════════════════════
+let variantSelectionActive = false;
+
+function enterVariantSelection() {
+  if (selected === null) return;
+  const it = items[selected];
+  const variants = VARIANTS[it.type] || [];
+  if (variants.length === 0) return;
+
+  variantSelectionActive = true;
+
+  // Hide the open card
+  document.getElementById('openCard').style.display = 'none';
+  cardOpen = false;
+
+  // Set panel title
+  const currentVariant = variants.find(v => v.id === it.variant);
+  document.getElementById('variantSideTitle').textContent = it.type[0].toUpperCase() + it.type.slice(1);
+  document.getElementById('variantSideSub').textContent = 'Select a variant';
+
+  // Build variant list
+  const list = document.getElementById('variantSideList');
+  list.innerHTML = '';
+  variants.forEach(v => {
+    const btn = document.createElement('button');
+    btn.className = 'variant-opt' + (v.id === it.variant ? ' active' : '');
+    btn.innerHTML = `
+      <div class="variant-swatch" style="background:#${v.color.toString(16).padStart(6,'0')}"></div>
+      <div style="display:flex;flex-direction:column;gap:1px;min-width:0;">
+        <span style="font-weight:500;">${v.name}</span>
+        <span style="font-size:10px;color:var(--text-tertiary);font-family:'DM Mono',monospace;">${v.brand} · ${v.material}</span>
+      </div>
+    `;
+    btn.onclick = () => applyVariant(v.id);
+    list.appendChild(btn);
+  });
+
+  // Show variant panel (0 → 30%)
+  document.getElementById('variantSide').classList.add('visible');
+
+  // Re-render asset bar
+  renderAssetBar();
+
+  // Center camera on object within the right 70% of the viewport
+  if (!savedCameraState) {
+    savedCameraState = { x: camera.position.x, z: camera.position.z, zoom: camera.zoom };
+  }
+
+  // Wait a frame for the panel to render so we can measure
+  requestAnimationFrame(() => {
+    const s = objSize(it.type, it.rot);
+    const objCX = it.x + s.w / 2;
+    const objCZ = it.z + s.h / 2;
+
+    // The panel takes 30% of canvas, so the scene viewport center shifts right
+    const canvasW = document.getElementById('canvasArea').clientWidth;
+    const canvasH = document.getElementById('canvasArea').clientHeight;
+    const panelW = canvasW * 0.3;
+    const sceneW = canvasW - panelW;
+    const sceneCenter = panelW + sceneW / 2;
+    const sceneCenterFrac = sceneCenter / canvasW;
+    const sceneCenterNDC = -1 + 2 * sceneCenterFrac;
+
+    // Calculate zoom to fit object with padding in the 70% area
+    const viewW = (camera.right - camera.left);
+    const viewH = (camera.top - camera.bottom);
+    const availW = (sceneW / canvasW) * viewW; // world units available in 70%
+    const availH = viewH; // full height available
+    const pad = 3; // world units of padding around object
+    const zoomX = availW / (s.w + pad * 2);
+    const zoomZ = availH / (s.h + pad * 2);
+    const targetZoom = Math.min(zoomX, zoomZ, 3.5); // cap max zoom
+
+    const focusX = objCX - sceneCenterNDC * viewW / (2 * targetZoom);
+    const focusZ = objCZ;
+
+    const startX = camera.position.x, startZ = camera.position.z, startZoom = camera.zoom;
+    const duration = 350;
+    const startTime = performance.now();
+    function tick(now) {
+      const t = Math.min(1, (now - startTime) / duration);
+      const ease = 1 - Math.pow(1 - t, 3);
+      const cx = startX + (focusX - startX) * ease;
+      const cz = startZ + (focusZ - startZ) * ease;
+      camera.position.x = cx; camera.position.z = cz;
+      camera.zoom = startZoom + (targetZoom - startZoom) * ease;
+      camera.lookAt(cx, 0, cz);
+      camera.up.set(0, 0, -1);
+      camera.updateProjectionMatrix();
+      if (t < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+function applyVariant(variantId) {
+  if (selected === null) return;
+  const it = items[selected];
+  it.variant = variantId;
+  it.colorOverride = null;
+  it.accentOverride = null;
+
+  if (it.group) scene.remove(it.group);
+  it.group = buildItemGroup(it, selected);
+  scene.add(it.group);
+
+  // Update active state in panel
+  document.querySelectorAll('#variantSideList .variant-opt').forEach(btn => {
+    const name = btn.querySelector('span').textContent;
+    const variants = VARIANTS[it.type] || [];
+    const v = variants.find(vv => vv.name === name);
+    btn.classList.toggle('active', v && v.id === variantId);
+  });
+
+  renderAssetBar();
+}
+
+function exitVariantSelection() {
+  variantSelectionActive = false;
+  document.getElementById('variantSide').classList.remove('visible');
+
+  renderAssetBar();
+
+  if (selected !== null) {
+    openCard(selected);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  HORIZONTAL ASSET BAR
+// ══════════════════════════════════════════════════════════════
+function renderAssetBar() {
+  const bar = document.getElementById('assetBar');
+  const container = document.getElementById('assetBarCards');
+  container.innerHTML = '';
+
+  const confirmed = items.filter(it => it.type !== 'null');
+
+  if (confirmed.length === 0) {
+    bar.classList.remove('visible');
+    return;
+  }
+
+  const wasVisible = bar.offsetWidth > 0;
+  bar.classList.add('visible');
+  if (!wasVisible) {
+    // Panel is animating in — resize after transition
+    bar.addEventListener('transitionend', resizeCamera, { once: true });
+  }
+
+  confirmed.forEach(it => {
+    const idx = items.indexOf(it);
+    const s = objSize(it.type, it.rot);
+    const v = it.variant && VARIANTS[it.type] ? VARIANTS[it.type].find(vv => vv.id === it.variant) : null;
+    const displayColor = it.colorOverride !== undefined && it.colorOverride !== null
+      ? it.colorOverride
+      : (v ? v.color : null);
+    const colorHex = displayColor !== null ? '#' + displayColor.toString(16).padStart(6, '0') : (CATEGORIES.find(c => c.type === it.type)?.color || '#888');
+    const variantName = v ? v.name : '';
+
+    const card = document.createElement('div');
+    card.className = 'asset-bar-card' + (idx === selected ? ' active' : '');
+
+    card.innerHTML = `
+      <div class="abc-swatch" style="background:${colorHex}"></div>
+      <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1;">
+        <span class="abc-name">${v ? v.name : it.type[0].toUpperCase() + it.type.slice(1)}</span>
+        <span class="abc-meta">${v ? v.brand : it.type} · ${v ? v.material : s.w+'×'+s.h}</span>
+      </div>
+      <button class="abc-del" onclick="event.stopPropagation();removeItem(${idx})">×</button>
+    `;
+    card.onclick = () => { if (!variantSelectionActive) selectItem(idx); };
+    container.appendChild(card);
+  });
+}
+
+// Alias for compatibility
+function renderDynPanel() { renderAssetBar(); }
+
+function worldToScreen(wx, wz) {
+  const v = new THREE.Vector3(wx, 0, wz);
+  v.project(camera);
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (v.x + 1) / 2 * rect.width,
+    y: (-v.y + 1) / 2 * rect.height,
+  };
+}
+
+function animateCameraToItem(item, onComplete) {
+  const s = objSize(item.type, item.rot);
+  const focusX = item.x + s.w / 2;
+  const focusZ = item.z + s.h / 2;
+
+  if (!savedCameraState) {
+    savedCameraState = { x: camera.position.x, z: camera.position.z, zoom: camera.zoom };
+  }
+
+  const startX = camera.position.x, startZ = camera.position.z;
+  const duration = 300;
+  const startTime = performance.now();
+
+  function tick(now) {
+    const t = Math.min(1, (now - startTime) / duration);
+    const ease = 1 - Math.pow(1 - t, 3);
+
+    const cx = startX + (focusX - startX) * ease;
+    const cz = startZ + (focusZ - startZ) * ease;
+    camera.position.x = cx;
+    camera.position.z = cz;
+    camera.lookAt(cx, 0, cz);
+    camera.up.set(0, 0, -1);
+    camera.updateProjectionMatrix();
+
+    if (cardOpen && selected !== null) {
+      repositionCard(items[selected]);
+    }
+
+    if (t < 1) requestAnimationFrame(tick);
+    else if (onComplete) onComplete();
+  }
+  requestAnimationFrame(tick);
+}
+
+function animateCameraRestore() {
+  if (!savedCameraState) return;
+  const saved = savedCameraState;
+  savedCameraState = null;
+
+  const startX = camera.position.x, startZ = camera.position.z, startZoom = camera.zoom;
+  const targetZoom = saved.zoom !== undefined ? saved.zoom : startZoom;
+  const duration = 300;
+  const startTime = performance.now();
+
+  function tick(now) {
+    const t = Math.min(1, (now - startTime) / duration);
+    const ease = 1 - Math.pow(1 - t, 3);
+
+    const cx = startX + (saved.x - startX) * ease;
+    const cz = startZ + (saved.z - startZ) * ease;
+    camera.position.x = cx;
+    camera.position.z = cz;
+    camera.zoom = startZoom + (targetZoom - startZoom) * ease;
+    camera.lookAt(cx, 0, cz);
+    camera.up.set(0, 0, -1);
+    camera.updateProjectionMatrix();
+
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function repositionCard(it) {
+  if (!it || it.type === 'null') return;
+  const card = document.getElementById('openCard');
+  positionCardAt(it, card);
+}
+
+function updateCtx(){
+  if(selected===null) return;
+  const it=items[selected];
+  if(cardOpen && it && it.type!=='null') repositionCard(it);
+}
+
+function swapType(newType){
+  if(selected===null)return;
+  const it=items[selected];
+  if(it.type===newType)return;
+  const old={type:it.type,rot:it.rot,x:it.x,z:it.z,mountX:it.mountX,mountZ:it.mountZ,mountW:it.mountW,mountH:it.mountH,offX:it.offX,offZ:it.offZ,quadrant:it.quadrant};
+  const oldS=objSize(old.type,old.rot);
+  const cx=it.x+oldS.w/2, cz=it.z+oldS.h/2;
+  const f=FURNITURE[newType];
+  const hasQ=f.padMode==='halfDepth'||f.padMode==='corner';
+  const newQ=hasQ?inferQuadrant(newType,0,cx-f.w/2,cz-f.h/2):null;
+  const newRot=(f.padMode==='corner'&&newQ)?quadrantRot(newType,newQ):0;
+  const newS=objSize(newType,newRot);
+  const idealX=cx-newS.w/2, idealZ=cz-newS.h/2;
+  it.type=newType; it.rot=newRot;
+  const res=resolvePosition(newType,idealX,idealZ,newRot,selected);
+  if(res.ok){
+    it.quadrant=newQ;
+    const mt=computeMount(newType,newRot,res.x,res.z,newQ);
+    it.x=res.x;it.z=res.z;
+    it.mountX=mt.mx;it.mountZ=mt.mz;it.mountW=mt.mw;it.mountH=mt.mh;
+    it.offX=res.x-mt.mx;it.offZ=res.z-mt.mz;
+    rebuildAll();updateCtx();
+  } else { Object.assign(it,old); }
+}
+
+function rotateItem(){
+  if(selected===null)return;
+  const it=items[selected],f=FURNITURE[it.type];
+  const maxR=f.lShape?4:2, nr=(it.rot+1)%maxR;
+  const old={rot:it.rot,x:it.x,z:it.z,mountX:it.mountX,mountZ:it.mountZ,mountW:it.mountW,mountH:it.mountH,offX:it.offX,offZ:it.offZ,quadrant:it.quadrant};
+  const oldS=objSize(it.type,old.rot),newS=objSize(it.type,nr);
+  const cx=it.x+oldS.w/2,cz=it.z+oldS.h/2;
+  it.rot=nr;
+  const hasQ=f.padMode==='halfDepth'||f.padMode==='corner';
+  const newQ=hasQ?inferQuadrant(it.type,nr,cx-newS.w/2,cz-newS.h/2):it.quadrant;
+  const res=resolvePosition(it.type,cx-newS.w/2,cz-newS.h/2,nr,selected);
+  if(res.ok){
+    it.quadrant=newQ;
+    const mt=computeMount(it.type,nr,res.x,res.z,newQ);
+    it.x=res.x;it.z=res.z;
+    it.mountX=mt.mx;it.mountZ=mt.mz;it.mountW=mt.mw;it.mountH=mt.mh;
+    it.offX=res.x-mt.mx;it.offZ=res.z-mt.mz;
+    rebuildAll();updateCtx();
+  } else { Object.assign(it,old); }
+}
+
+function nudge(dx,dz){
+  if(selected===null)return;
+  const it=items[selected],step=0.1;
+  const s=objSize(it.type,it.rot);
+  const mo=maxOff(it);
+  let newOffX=Math.max(0,Math.min(mo.maxX,it.offX+dx*step));
+  let newOffZ=Math.max(0,Math.min(mo.maxZ,it.offZ+dz*step));
+
+  const nx=it.mountX+newOffX, nz=it.mountZ+newOffZ;
+  if(nx<0||nz<0||nx+s.w>TOTAL_W||nz+s.h>TOTAL_H) return;
+
+  const ox=it.x,oz=it.z,oox=it.offX,ooz=it.offZ;
+  it.x=nx;it.z=nz;it.offX=newOffX;it.offZ=newOffZ;
+  if(collides(it,selected)){
+    it.x=ox;it.z=oz;it.offX=oox;it.offZ=ooz;
+    return;
+  }
+  rebuildAll();updateCtx();
+}
+
+function clearAll(){items.forEach(it=>{if(it.group)scene.remove(it.group);});items=[];deselect();updateCount();renderAssetBar();}
+function updateCount(){document.getElementById('itemCount').textContent=items.length+' item'+(items.length!==1?'s':'');}
+
+// ══════════════════════════════════════════════════════════════
+//  DRAG (with edge-overshoot reorient for sofas)
+// ══════════════════════════════════════════════════════════════
+let isDragging=false, dragIdx=-1, dragStart=null, dragItemStart=null;
+let reorientState=null; // { side:'left'|'right', rot, ghostX, ghostZ } or null
+const OVERSHOOT_THRESHOLD = 2; // units past mount edge to trigger reorient
+const ELASTIC_MAX = 2; // max visual overshoot distance
+
+function canTransform(type) {
+  // Sofas and sectionals can transform via overshoot
+  const f = FURNITURE[type];
+  if (!f || f.isNull) return false;
+  return f.padMode === 'halfDepth' || f.padMode === 'corner';
+}
+
+function startDrag(idx,wx,wz){
+  isDragging=true;dragIdx=idx;
+  dragStart={x:wx,z:wz};
+  const it=items[idx];
+  dragItemStart={offX:it.offX,offZ:it.offZ,rot:it.rot};
+  reorientState=null;
+  canvas.style.cursor='grabbing';
+}
+
+function updateDrag(wx,wz){
+  if(!isDragging||dragIdx<0)return;
+  const it=items[dragIdx],s=objSize(it.type,dragItemStart.rot);
+  const mo=maxOff(it);
+  const totalDx=wx-dragStart.x, totalDz=wz-dragStart.z;
+
+  const rawOffX=dragItemStart.offX+totalDx;
+  const rawOffZ=dragItemStart.offZ+totalDz;
+
+  const overshootLeft = Math.max(0, -rawOffX);
+  const overshootRight = Math.max(0, rawOffX - mo.maxX);
+  const overshootX = overshootLeft > 0 ? -overshootLeft : overshootRight > 0 ? overshootRight : 0;
+
+  const overshootTop = Math.max(0, -rawOffZ);
+  const overshootBottom = Math.max(0, rawOffZ - mo.maxZ);
+  const overshootZ = overshootTop > 0 ? -overshootTop : overshootBottom > 0 ? overshootBottom : 0;
+
+  const absX = Math.abs(overshootX), absZ = Math.abs(overshootZ);
+  const absOvershoot = Math.max(absX, absZ);
+  const dominantAxis = absX >= absZ ? 'x' : 'z';
+
+  const canXform = canTransform(it.type);
+  const isHorizontal = s.w > s.h;
+  const q = it.quadrant;
+  const f = FURNITURE[it.type];
+
+  // Wall edges from quadrant
+  const walls = q ? quadrantWalls(q) : { top:false, bottom:false, left:false, right:false };
+
+  let edgeBlocked = false;
+  if (dominantAxis === 'x') {
+    if (overshootX < 0 && walls.left) edgeBlocked = true;
+    if (overshootX > 0 && walls.right) edgeBlocked = true;
+  } else {
+    if (overshootZ < 0 && walls.top) edgeBlocked = true;
+    if (overshootZ > 0 && walls.bottom) edgeBlocked = true;
+  }
+
+  if (canXform && absOvershoot > OVERSHOOT_THRESHOLD && !edgeBlocked) {
+    let newQuadrant, newRot;
+
+    if (f.padMode === 'corner') {
+      // ── SECTIONAL: transform to the quadrant matching the overshoot direction ──
+      // Determine which corner quadrant to switch to based on overshoot
+      const curWalls = quadrantWalls(q);
+      // The new quadrant flips the wall on the overshoot side
+      let goTop = curWalls.top, goBottom = curWalls.bottom;
+      let goLeft = curWalls.left, goRight = curWalls.right;
+
+      if (dominantAxis === 'z') {
+        if (overshootZ < 0) { goTop = true; goBottom = false; }
+        else { goBottom = true; goTop = false; }
+      } else {
+        if (overshootX < 0) { goLeft = true; goRight = false; }
+        else { goRight = true; goLeft = false; }
+      }
+
+      if (goTop && goRight) newQuadrant = 'topRight';
+      else if (goBottom && goRight) newQuadrant = 'bottomRight';
+      else if (goBottom && goLeft) newQuadrant = 'bottomLeft';
+      else newQuadrant = 'topLeft';
+
+      newRot = quadrantRot(it.type, newQuadrant);
+
+    } else {
+      // ── SOFA: existing logic ──
+      if (dominantAxis === 'z' && quadrantIsHorizontal(q)) {
+        newQuadrant = overshootZ < 0 ? 'top' : 'bottom';
+        newRot = dragItemStart.rot;
+      } else if (dominantAxis === 'x' && !quadrantIsHorizontal(q)) {
+        newQuadrant = overshootX < 0 ? 'left' : 'right';
+        newRot = dragItemStart.rot;
+      } else if (dominantAxis === 'x' && quadrantIsHorizontal(q)) {
+        newQuadrant = overshootX < 0 ? 'left' : 'right';
+        newRot = 1;
+      } else {
+        newQuadrant = overshootZ < 0 ? 'top' : 'bottom';
+        newRot = 0;
+      }
+    }
+
+    const newS = objSize(it.type, newRot);
+    const newMt = computeMount(it.type, newRot, 0, 0, newQuadrant);
+
+    const curCenterX = it.mountX + rawOffX + s.w / 2;
+    const curCenterZ = it.mountZ + rawOffZ + s.h / 2;
+    let nx = Math.max(newMt.mx, Math.min(newMt.mx + newMt.mw - newS.w, curCenterX - newS.w / 2));
+    let nz = Math.max(newMt.mz, Math.min(newMt.mz + newMt.mh - newS.h, curCenterZ - newS.h / 2));
+
+    it.rot = newRot;
+    it.quadrant = newQuadrant;
+    it.x = nx; it.z = nz;
+    it.mountX = newMt.mx; it.mountZ = newMt.mz; it.mountW = newMt.mw; it.mountH = newMt.mh;
+    it.offX = nx - newMt.mx; it.offZ = nz - newMt.mz;
+
+    dragStart = { x: wx, z: wz };
+    dragItemStart = { offX: it.offX, offZ: it.offZ, rot: it.rot };
+
+    if (it.group) scene.remove(it.group);
+    it.group = buildItemGroup(it, dragIdx); scene.add(it.group);
+    updateCtx(); renderAssetPanel();
+    return;
+
+  } else if (canXform && absOvershoot > 0 && absOvershoot <= OVERSHOOT_THRESHOLD && !edgeBlocked) {
+    // ── ELASTIC STRETCH with resistance ──
+    hideGhost();
+    reorientState = null;
+
+    // Dampen overshoot: maps raw overshoot through a curve with diminishing returns
+    // At 0 overshoot → 0 visual, at threshold → ~half threshold visual
+    function dampen(raw, limit) {
+      const clampEdge = raw < 0 ? 0 : limit;
+      const over = raw - clampEdge;
+      if (Math.abs(over) < 0.001) return raw;
+      const dampened = Math.sign(over) * OVERSHOOT_THRESHOLD * (1 - 1 / (1 + Math.abs(over) / OVERSHOOT_THRESHOLD));
+      return clampEdge + dampened;
+    }
+
+    const visOffX = absX > 0 ? dampen(rawOffX, mo.maxX) : Math.max(0, Math.min(mo.maxX, rawOffX));
+    const visOffZ = absZ > 0 ? dampen(rawOffZ, mo.maxZ) : Math.max(0, Math.min(mo.maxZ, rawOffZ));
+    const nx = it.mountX + visOffX, nz = it.mountZ + visOffZ;
+
+    it.x = nx; it.z = nz; it.offX = visOffX; it.offZ = visOffZ;
+    if (it.group) scene.remove(it.group);
+    it.group = buildItemGroup(it, dragIdx); scene.add(it.group);
+    it.group.visible = true;
+    updateCtx();
+    return;
+
+  } else {
+    // ── NORMAL DRAG (or blocked edge — just clamp) ──
+    hideGhost();
+    reorientState = null;
+
+    let newOffX = Math.max(0, Math.min(mo.maxX, rawOffX));
+    let newOffZ = Math.max(0, Math.min(mo.maxZ, rawOffZ));
+
+    const nx = it.mountX + newOffX, nz = it.mountZ + newOffZ;
+    if (nx < 0 || nz < 0 || nx + s.w > TOTAL_W || nz + s.h > TOTAL_H) return;
+
+    const ox = it.x, oz = it.z, oox = it.offX, ooz = it.offZ;
+    it.x = nx; it.z = nz; it.offX = newOffX; it.offZ = newOffZ;
+
+    if (collides(it, dragIdx)) {
+      it.x = nx; it.z = oz; it.offX = newOffX; it.offZ = ooz;
+      if (collides(it, dragIdx)) {
+        it.x = ox; it.z = nz; it.offX = oox; it.offZ = newOffZ;
+        if (collides(it, dragIdx)) {
+          it.x = ox; it.z = oz; it.offX = oox; it.offZ = ooz;
+          return;
+        }
+      }
+    }
+
+    if (it.group) scene.remove(it.group);
+    it.group = buildItemGroup(it, dragIdx); scene.add(it.group);
+    it.group.visible = true;
+    updateCtx();
+  }
+}
+
+function endDrag(){
+  if (isDragging && dragIdx >= 0) {
+    const it = items[dragIdx];
+    hideGhost();
+
+    // Bounce back if in elastic overshoot
+    const mo = maxOff(it);
+    if (it.offX < 0 || it.offX > mo.maxX || it.offZ < 0 || it.offZ > mo.maxZ) {
+      bounceBack(dragIdx);
+    }
+
+    reorientState = null;
+  }
+  isDragging=false;dragIdx=-1;dragStart=null;dragItemStart=null;canvas.style.cursor='default';
+}
+
+function bounceBack(idx) {
+  const it = items[idx];
+  const mo = maxOff(it);
+  it.offX = Math.max(0, Math.min(mo.maxX, it.offX));
+  it.offZ = Math.max(0, Math.min(mo.maxZ, it.offZ));
+  syncItemPos(it);
+  if (it.group) scene.remove(it.group);
+  it.group = buildItemGroup(it, idx); scene.add(it.group);
+  it.group.visible = true;
+  updateCtx();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CONTEXTUAL PREDICTION
+// ══════════════════════════════════════════════════════════════
+function predictPlacement(wx, wz) {
+  const edgeThresh = 4; // how close to edge = "near wall"
+  const nearLeft = wx < edgeThresh;
+  const nearRight = wx > TOTAL_W - edgeThresh;
+  const nearTop = wz < edgeThresh;
+  const nearBottom = wz > TOTAL_H - edgeThresh;
+
+  // Corner → sectional, rotated to face inward
+  if (nearTop && nearRight) return { type: 'sectional', rot: 0 };    // L: top-right corner
+  if (nearBottom && nearRight) return { type: 'sectional', rot: 1 }; // L: bottom-right
+  if (nearBottom && nearLeft) return { type: 'sectional', rot: 2 };  // L: bottom-left
+  if (nearTop && nearLeft) return { type: 'sectional', rot: 3 };     // L: top-left
+
+  // Edge → sofa facing inward
+  if (nearTop) return { type: 'sofa', rot: 0 };     // along top wall, back to wall
+  if (nearRight) return { type: 'sofa', rot: 1 };   // along right wall
+  if (nearBottom) return { type: 'sofa', rot: 0 };  // along bottom wall
+  if (nearLeft) return { type: 'sofa', rot: 1 };    // along left wall
+
+  // Default → chair
+  return { type: 'chair', rot: 0 };
+}
+
+// ══════════════════════════════════════════════════════════════
+//  GHOST (placed but unconfirmed state)
+// ══════════════════════════════════════════════════════════════
+let ghostGroup = null;
+let ghostType = null;
+let ghostRot = null;
+
+function showGhostAt(type, x, z, rot) {
+  // Rebuild if type/rot changed
+  if (ghostGroup && (ghostType !== type || ghostRot !== rot)) {
+    scene.remove(ghostGroup);
+    ghostGroup = null;
+  }
+
+  if (!ghostGroup) {
+    ghostType = type;
+    ghostRot = rot;
+    const s = objSize(type, rot);
+    const mt = computeMount(type, rot, x, z);
+    ghostGroup = new THREE.Group();
+
+    // Padding zone sized to mount
+    const padMat = new THREE.MeshBasicMaterial({ color: 0xB4B2A9, transparent: true, opacity: 0.06, depthWrite: false });
+    const padPlane = new THREE.Mesh(new THREE.PlaneGeometry(mt.mw, mt.mh), padMat);
+    padPlane.rotation.x = -Math.PI / 2;
+    padPlane.position.set(mt.mw / 2 - (x - mt.mx), 0.003, mt.mh / 2 - (z - mt.mz));
+    ghostGroup.add(padPlane);
+
+    // Padding border
+    const ox = -(x - mt.mx), oz2 = -(z - mt.mz);
+    const borderMat = new THREE.LineDashedMaterial({ color: 0x378ADD, transparent: true, opacity: 0.3, dashSize: 0.3, gapSize: 0.2 });
+    const bpts = [
+      new THREE.Vector3(ox, 0.008, oz2),
+      new THREE.Vector3(ox + mt.mw, 0.008, oz2),
+      new THREE.Vector3(ox + mt.mw, 0.008, oz2 + mt.mh),
+      new THREE.Vector3(ox, 0.008, oz2 + mt.mh),
+      new THREE.Vector3(ox, 0.008, oz2),
+    ];
+    const borderLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(bpts), borderMat);
+    borderLine.computeLineDistances();
+    ghostGroup.add(borderLine);
+
+    // Furniture mesh (transparent)
+    const fm = createFurnitureMesh(type, s.w, s.h, rot);
+    fm.traverse(c => {
+      if (c.isMesh) {
+        c.material = c.material.clone();
+        c.material.transparent = true;
+        c.material.opacity = 0.3;
+        c.castShadow = false;
+      }
+    });
+    ghostGroup.add(fm);
+    scene.add(ghostGroup);
+  }
+
+  ghostGroup.position.set(x, 0, z);
+  ghostGroup.visible = true;
+}
+
+function hideGhost() {
+  if (ghostGroup) {
+    scene.remove(ghostGroup);
+    ghostGroup = null;
+    ghostType = null;
+    ghostRot = null;
+  }
+}
+
+// Update the ghost to show a different type (when user hovers picker items)
+function updateGhostType(type) {
+  if (!pendingPlacePos || !pendingPrediction) return;
+  const rot = (type === pendingPrediction.type) ? pendingPrediction.rot : 0;
+  const s = objSize(type, rot);
+  const idealX = pendingPlacePos.x - s.w / 2, idealZ = pendingPlacePos.z - s.h / 2;
+  const excl = pendingNullIdx !== null ? pendingNullIdx : -1;
+  const res = resolvePosition(type, idealX, idealZ, rot, excl);
+  if (res.ok) {
+    showGhostAt(type, res.x, res.z, rot);
+  } else {
+    hideGhost();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RAYCASTING
+// ══════════════════════════════════════════════════════════════
+const raycaster=new THREE.Raycaster(),mouseV=new THREE.Vector2(),gPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+function getWorldPos(e){
+  const r=canvas.getBoundingClientRect();
+  mouseV.x=((e.clientX-r.left)/r.width)*2-1;mouseV.y=-((e.clientY-r.top)/r.height)*2+1;
+  raycaster.setFromCamera(mouseV,camera);
+  const p=new THREE.Vector3();raycaster.ray.intersectPlane(gPlane,p);
+  return p||null;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MOUSE HANDLERS
+// ══════════════════════════════════════════════════════════════
+let isPanning = false, panStart = null, panCameraStart = null;
+
+canvas.addEventListener('mousemove',e=>{
+  const p=getWorldPos(e);
+  if(isPanning){
+    const rect=canvas.getBoundingClientRect();
+    const dx=(e.clientX-panStart.x);
+    const dy=(e.clientY-panStart.y);
+    // Convert pixel delta to world units using ortho camera
+    const viewW=(camera.right-camera.left)/camera.zoom;
+    const viewH=(camera.top-camera.bottom)/camera.zoom;
+    const worldDx=-(dx/rect.width)*viewW;
+    const worldDz=-(dy/rect.height)*viewH;
+    camera.position.x=panCameraStart.x+worldDx;
+    camera.position.z=panCameraStart.z+worldDz;
+    camera.lookAt(camera.position.x,0,camera.position.z);
+    camera.up.set(0,0,-1);
+    camera.updateProjectionMatrix();
+    if(cardOpen&&selected!==null)repositionCard(items[selected]);
+    return;
+  }
+  if(!p){canvas.style.cursor='default';if(isDragging)endDrag();return;}
+  if(isDragging){updateDrag(p.x,p.z);return;}
+  if(pickerActive){canvas.style.cursor='default';return;}
+  const hit=findItemAt(p.x,p.z);
+  if(hit>=0){canvas.style.cursor='grab';}
+  else{canvas.style.cursor='crosshair';}
+});
+
+canvas.addEventListener('mousedown',e=>{
+  if(e.button!==0)return;const p=getWorldPos(e);if(!p)return;
+  if(pickerActive)return;
+  const hit=findItemAt(p.x,p.z);
+  if(hit>=0){
+    selectItem(hit);
+    startDrag(hit,p.x,p.z);
+    e.preventDefault();
+  } else {
+    // Start panning
+    isPanning=true;
+    panStart={x:e.clientX,y:e.clientY};
+    panCameraStart={x:camera.position.x,z:camera.position.z};
+    canvas.style.cursor='grabbing';
+  }
+});
+
+let wasDragFlag = false;
+
+canvas.addEventListener('mouseup',e=>{
+  if(isPanning){
+    const dx=Math.abs(e.clientX-panStart.x),dy=Math.abs(e.clientY-panStart.y);
+    if(dx>3||dy>3) wasDragFlag=true;
+    isPanning=false;panStart=null;panCameraStart=null;
+    canvas.style.cursor='crosshair';
+  }
+  if(isDragging){
+    const it=items[dragIdx];
+    const wasDrag=Math.abs(it.offX-dragItemStart.offX)>0.05||Math.abs(it.offZ-dragItemStart.offZ)>0.05||reorientState!==null;
+    endDrag();if(wasDrag) wasDragFlag=true;
+  }
+});
+
+// Pending placement state
+let pendingPlacePos=null;
+let pendingPrediction=null;
+let pendingNullIdx=null;
+
+canvas.addEventListener('click',e=>{
+  if(wasDragFlag){wasDragFlag=false;return;}
+  const p=getWorldPos(e);if(!p)return;
+  if(pickerActive)return;
+  const hit=findItemAt(p.x,p.z);
+
+  // Clicking a body is handled by mousedown (select+drag), so skip
+  if(hit>=0) return;
+
+  // Clicking empty space
+  if(selected!==null){ deselect(); return; }
+
+  // Show context menu to pick type
+  pendingPlacePos = { x: p.x, z: p.z };
+  pendingPrediction = predictPlacement(p.x, p.z);
+  showContextMenu(e.clientX, e.clientY);
+});
+
+canvas.addEventListener('mouseleave',()=>{if(isDragging)endDrag();if(isPanning){isPanning=false;panStart=null;panCameraStart=null;}});
+
+// ══════════════════════════════════════════════════════════════
+//  PLACE CONTEXT MENU
+// ══════════════════════════════════════════════════════════════
+function showContextMenu(sx, sy) {
+  pickerActive = true;
+  const menu = document.getElementById('placeMenu');
+  const ov = document.getElementById('placeMenuOverlay');
+  const rect = document.getElementById('canvasArea').getBoundingClientRect();
+
+  let px = sx - rect.left + 8, py = sy - rect.top + 8;
+  // Keep within bounds
+  if (px + 150 > rect.width) px = sx - rect.left - 158;
+  if (py + 120 > rect.height) py = rect.height - 128;
+  if (py < 8) py = 8;
+
+  menu.style.left = px + 'px';
+  menu.style.top = py + 'px';
+  menu.style.display = 'flex';
+  ov.style.display = 'block';
+}
+
+function closePlaceMenu() {
+  pickerActive = false;
+  pendingPlacePos = null;
+  pendingPrediction = null;
+  hideGhost();
+  document.getElementById('placeMenu').style.display = 'none';
+  document.getElementById('placeMenuOverlay').style.display = 'none';
+}
+
+function previewType(type) {
+  if (!pendingPlacePos) return;
+  const pred = pendingPrediction;
+  const rot = (pred && pred.type === type) ? pred.rot : 0;
+  const s = objSize(type, rot);
+  const idealX = pendingPlacePos.x - s.w / 2, idealZ = pendingPlacePos.z - s.h / 2;
+  const res = resolvePosition(type, idealX, idealZ, rot, -1);
+  if (res.ok) showGhostAt(type, res.x, res.z, rot);
+  else hideGhost();
+}
+
+function placeFromMenu(type) {
+  if (!pendingPlacePos) { closePlaceMenu(); return; }
+  const pred = pendingPrediction;
+  const rot = (pred && pred.type === type) ? pred.rot : 0;
+  const s = objSize(type, rot);
+  const idealX = pendingPlacePos.x - s.w / 2, idealZ = pendingPlacePos.z - s.h / 2;
+  const res = resolvePosition(type, idealX, idealZ, rot, -1);
+  if (res.ok) {
+    hideGhost();
+    const idx = placeItem(type, res.x, res.z, rot);
+    selectItem(idx);
+  }
+  closePlaceMenu();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  STUBS (asset panel removed)
+// ══════════════════════════════════════════════════════════════
+let pickerActive = false;
+function renderAssetPanel() { renderDynPanel(); }
+
+function cancelPicker() {
+  removeAllNulls();
+  pendingPlacePos = null;
+  pendingPrediction = null;
+  pendingNullIdx = null;
+  hideGhost();
+  pickerActive = false;
+}
+
+function removeAllNulls() {
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].type === 'null') {
+      if (items[i].group) scene.remove(items[i].group);
+      items.splice(i, 1);
+      if (selected === i) selected = null;
+      else if (selected > i) selected--;
+    }
+  }
+  rebuildAll();
+  updateCount();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  VIEW
+// ══════════════════════════════════════════════════════════════
+const TARGET=new THREE.Vector3(TOTAL_W/2,0,TOTAL_H/2);
+function setView(v){
+  document.getElementById('btn-top').classList.toggle('active',v==='top');
+  document.getElementById('btn-angle').classList.toggle('active',v==='angle');
+  if(v==='top'){camera.position.set(TOTAL_W/2,20,TOTAL_H/2);camera.lookAt(TARGET);camera.zoom=1.4;}
+  else{camera.position.set(TOTAL_W/2+10,16,TOTAL_H/2+14);camera.lookAt(TARGET);camera.zoom=1.1;}
+  camera.updateProjectionMatrix();
+}
+canvas.addEventListener('wheel',e=>{e.preventDefault();camera.zoom=Math.max(0.3,Math.min(5,camera.zoom-e.deltaY*0.002));camera.updateProjectionMatrix();},{passive:false});
+
+// ══════════════════════════════════════════════════════════════
+//  KEYBOARD
+// ══════════════════════════════════════════════════════════════
+document.addEventListener('keydown',e=>{
+  if(variantSelectionActive){
+    if(e.key==='Escape'){exitVariantSelection();e.preventDefault();return;}
+    return;
+  }
+  if(pickerActive){
+    if(e.key==='Escape'){closePlaceMenu();cancelPicker();e.preventDefault();return;}
+    return;
+  }
+  const sm={'1':'chair','2':'sofa','3':'sectional'};
+  if(sm[e.key]&&selected!==null){swapType(sm[e.key]);renderAssetPanel();return;}
+  if(e.key==='Escape')deselect();
+  if((e.key==='r'||e.key==='R')&&selected!==null){rotateItem();return;}
+  if(selected!==null){
+    if(e.key==='ArrowLeft'){nudge(-1,0);e.preventDefault();}
+    if(e.key==='ArrowRight'){nudge(1,0);e.preventDefault();}
+    if(e.key==='ArrowUp'){nudge(0,-1);e.preventDefault();}
+    if(e.key==='ArrowDown'){nudge(0,1);e.preventDefault();}
+    if(e.key==='Delete'||e.key==='Backspace'){deleteSelected();e.preventDefault();}
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  RENDER + RESIZE
+// ══════════════════════════════════════════════════════════════
+(function animate(){requestAnimationFrame(animate);resizeCamera();renderer.render(scene,camera);})();
+function resizeCamera(){
+  const w=container.clientWidth,h=container.clientHeight;
+  if(w<=0||h<=0) return;
+  const a=w/h;
+  camera.left=-frustumSize*a/2;camera.right=frustumSize*a/2;camera.top=frustumSize/2;camera.bottom=-frustumSize/2;
+  camera.updateProjectionMatrix();renderer.setSize(w,h);
+}
+window.addEventListener('resize',resizeCamera);
+</script>
+</body>
+</html>
