@@ -1,0 +1,39 @@
+/* ── PlacingMenu ─────────────────────────────────────────── */
+.placing-menu {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-100);
+  padding: var(--spacer-100);
+  background: var(--color-white-base);
+  border: 1px solid var(--color-divider-gray-base);
+  border-radius: var(--radius-base);
+  overflow: hidden;
+}
+
+.placing-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-300);
+  padding: var(--spacer-300);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.placing-menu-item:hover {
+  background: var(--color-bg-gray-sink);
+}
+
+.placing-menu-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  background: var(--color-divider-gray-base);
+}
+
+.placing-menu-label {
+  font: var(--type-label-small);
+  color: var(--color-black-base);
+  white-space: nowrap;
+}

@@ -54,7 +54,7 @@
 }
 
 .pc-header-name-label {
-  font: var(--type-label-500);
+  font: var(--type-label-base);
   color: var(--color-black-base);
   white-space: nowrap;
   overflow: hidden;
@@ -69,7 +69,7 @@
 }
 
 .pc-header-variant-label {
-  font: var(--type-label-300);
+  font: var(--type-label-small);
   color: var(--color-text-black-off);
   white-space: nowrap;
 }
@@ -100,7 +100,7 @@
 .pc-option-type {
   display: flex;
   justify-content: space-between;
-  font: var(--type-label-300);
+  font: var(--type-label-small);
   color: var(--color-text-black-off);
 }
 

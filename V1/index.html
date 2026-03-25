@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="../globalTokens.css">
 <link rel="stylesheet" href="../globalTypography.css">
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="PanelController.css">
+<link rel="stylesheet" href="PlacingMenu.css">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; overflow: hidden; }
@@ -24,28 +26,6 @@
     width: 184px;
     flex-shrink: 0;
     background: linear-gradient(97.5deg, #fbfafa, #d3d3d3);
-  }
-
-  /* ── Panel Drag Handle ──────────────────────────────────── */
-  .panel-handle {
-    width: 6px;
-    flex-shrink: 0;
-    cursor: col-resize;
-    background: transparent;
-    position: relative;
-  }
-  .panel-handle::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 2px;
-    width: 1px;
-    background: var(--color-divider-gray-base);
-  }
-  .panel-handle:hover::after,
-  .panel-handle:active::after {
-    background: var(--color-text-black-off);
   }
 
   /* ── SceneContainer ─────────────────────────────────────── */
@@ -70,7 +50,7 @@
     right: 0;
     text-align: center;
     padding-bottom: var(--spacer-700);
-    font: var(--type-label-300);
+    font: var(--type-label-small);
     color: var(--color-black-base);
     pointer-events: none;
   }
@@ -91,6 +71,9 @@
 <script src="CameraController.js"></script>
 <script src="PanelController.js"></script>
 <script src="SceneController.js"></script>
+<script src="StateController.js"></script>
+<script src="CursorController.js"></script>
+<script src="PlacingMenu.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════
 //  CONFIG
@@ -138,12 +121,47 @@ const cam = new CameraController(camera, container, {
 });
 cam.toDefault();
 
-const sceneCtrl = new SceneController(scene, ROOM, { showGrid: true });
+const sceneCtrl = new SceneController(scene, ROOM, { showGrid: false });
 
 const panels = new PanelController({
   panel:   document.getElementById('dynamicLeftPanel'),
   handle:  document.getElementById('panelHandle'),
   onChange: () => resize(),
+});
+
+const cursor = new CursorController(scene, ROOM, canvas, camera);
+const state  = new StateController();
+const placingMenu = new PlacingMenu(container, state, camera, canvas);
+
+// ── State wiring ─────────────────────────────────────────────
+state.on('enter:placing', (data) => {
+  cursor.disable();
+});
+
+state.on('enter:default', () => {
+  cursor.enable();
+});
+
+canvas.addEventListener('click', (e) => {
+  if (state.is(STATES.DEFAULT)) {
+    // Get click position on grid
+    const rect = canvas.getBoundingClientRect();
+    const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(mx, my), camera);
+    const hit = new THREE.Vector3();
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    if (raycaster.ray.intersectPlane(plane, hit)) {
+      if (hit.x >= 0 && hit.x <= ROOM.width && hit.z >= 0 && hit.z <= ROOM.height) {
+        const ux = Math.floor(hit.x) + 0.5;
+        const uz = Math.floor(hit.z) + 0.5;
+        state.set(STATES.PLACING, { x: ux, z: uz });
+      }
+    }
+  } else if (state.is(STATES.PLACING)) {
+    state.set(STATES.DEFAULT);
+  }
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -158,6 +176,7 @@ window.addEventListener('resize', resize);
 
 (function animate() {
   requestAnimationFrame(animate);
+  cursor.update();
   renderer.render(scene, camera);
 })();
 </script>
