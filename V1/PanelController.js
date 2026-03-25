@@ -8,7 +8,7 @@
  *   const panels = new PanelController({
  *     panel:   document.getElementById('dynamicLeftPanel'),
  *     handle:  document.getElementById('panelHandle'),
- *     onChange: (totalWidth) => { /* resize camera, renderer */ }
+ *     onChange: (totalWidth) => { // resize camera, renderer }
  *   });
  */
 class PanelController {
@@ -17,11 +17,11 @@ class PanelController {
    * @param {HTMLElement} opts.panel    - the left panel element
    * @param {HTMLElement} opts.handle   - the drag handle element
    * @param {Function}    opts.onChange - called with total left-side width (px) on resize
-   * @param {number}     [opts.minWidth=120]
+   * @param {number}     [opts.minWidth=60]
    * @param {number}     [opts.maxWidth=480]
    * @param {number}     [opts.initialWidth=184]
    */
-  constructor({ panel, handle, onChange, minWidth = 120, maxWidth = 480, initialWidth = 184 }) {
+  constructor({ panel, handle, onChange, minWidth = 60, maxWidth = 480, initialWidth = 184 }) {
     this.panel    = panel;
     this.handle   = handle;
     this.onChange  = onChange || (() => {});
