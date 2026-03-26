@@ -118,6 +118,51 @@ class PulseController {
     this.plusGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(vPts), this.plusMat));
     this.plusGroup.position.y = 0.006;
     this.group.add(this.plusGroup);
+
+    // L-shape arm rectangles (hidden by default, only used in lShape mode)
+    this.lGroup = new THREE.Group();
+    this.lGroup.visible = false;
+    this.lGroup.position.y = 0.003;
+
+    const lFillMat = () => new THREE.MeshBasicMaterial({
+      color: this.fillColor, transparent: true, opacity: 0,
+      depthWrite: false, side: THREE.DoubleSide,
+    });
+    const lStrokeMat = () => new THREE.LineBasicMaterial({
+      color: this.strokeColor, transparent: true, opacity: 0,
+    });
+
+    // Hinge fill (always shown at full size when L is active)
+    this.lHingeFill = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), lFillMat());
+    this.lHingeFill.rotation.x = -Math.PI / 2;
+    this.lGroup.add(this.lHingeFill);
+
+    this.lHingeOutlineGeo = new THREE.BufferGeometry();
+    this.lHingeOutlineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(5 * 3), 3));
+    this.lHingeOutline = new THREE.Line(this.lHingeOutlineGeo, lStrokeMat());
+    this.lGroup.add(this.lHingeOutline);
+
+    // Major arm fill + outline
+    this.lMajorFill = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), lFillMat());
+    this.lMajorFill.rotation.x = -Math.PI / 2;
+    this.lGroup.add(this.lMajorFill);
+
+    this.lMajorOutlineGeo = new THREE.BufferGeometry();
+    this.lMajorOutlineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(5 * 3), 3));
+    this.lMajorOutline = new THREE.Line(this.lMajorOutlineGeo, lStrokeMat());
+    this.lGroup.add(this.lMajorOutline);
+
+    // Minor arm fill + outline
+    this.lMinorFill = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), lFillMat());
+    this.lMinorFill.rotation.x = -Math.PI / 2;
+    this.lGroup.add(this.lMinorFill);
+
+    this.lMinorOutlineGeo = new THREE.BufferGeometry();
+    this.lMinorOutlineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(5 * 3), 3));
+    this.lMinorOutline = new THREE.Line(this.lMinorOutlineGeo, lStrokeMat());
+    this.lGroup.add(this.lMinorOutline);
+
+    this.group.add(this.lGroup);
   }
 
   // ── Noise ────────────────────────────────────────────────
@@ -155,58 +200,88 @@ class PulseController {
   }
 
   /**
-   * Clamp a point to the nearest position inside the union of blocks.
-   * Blocks are relative to the hinge center.
+   * Update L-shape arms. Each arm is a rectangle growing from the hinge outward.
+   * @param {number} progress - 0 to 1 eased animation progress
+   * @param {number} opacity - current fade opacity
    */
-  _clampToBlocks(px, pz) {
-    let bestX = 0, bestZ = 0, bestDist = Infinity;
+  _updateLShape(progress, opacity) {
+    if (!this.pulseBlocks || this.pulseBlocks.length < 3) return;
 
-    for (const block of this.pulseBlocks) {
-      // Block bounds relative to hinge center
-      const bx0 = block.x - this._hingeOffX;
-      const bz0 = block.z - this._hingeOffZ;
+    const hinge = this.pulseBlocks[0];
+    const major = this.pulseBlocks[1];
+    const minor = this.pulseBlocks[2];
+    const hx = this._hingeOffX;
+    const hz = this._hingeOffZ;
+
+    // Helper: set a rect outline
+    const setOutline = (geo, x0, z0, x1, z1) => {
+      const pos = geo.attributes.position.array;
+      pos[0]=x0; pos[1]=0; pos[2]=z0;
+      pos[3]=x1; pos[4]=0; pos[5]=z0;
+      pos[6]=x1; pos[7]=0; pos[8]=z1;
+      pos[9]=x0; pos[10]=0; pos[11]=z1;
+      pos[12]=x0; pos[13]=0; pos[14]=z0;
+      geo.attributes.position.needsUpdate = true;
+    };
+
+    // Hinge: always full size
+    const hx0 = hinge.x - hx, hz0 = hinge.z - hz;
+    const hx1 = hx0 + hinge.w, hz1 = hz0 + hinge.d;
+    this.lHingeFill.scale.set(hinge.w, hinge.d, 1);
+    this.lHingeFill.position.set((hx0 + hx1) / 2, 0, (hz0 + hz1) / 2);
+    setOutline(this.lHingeOutlineGeo, hx0, hz0, hx1, hz1);
+
+    // Helper: update arm — grows only in thrust direction, full width from start
+    const updateArm = (block, fillMesh, outlineGeo) => {
+      const bx0 = block.x - hx;
+      const bz0 = block.z - hz;
       const bx1 = bx0 + block.w;
       const bz1 = bz0 + block.d;
 
-      const cx = Math.max(bx0, Math.min(bx1, px));
-      const cz = Math.max(bz0, Math.min(bz1, pz));
-      const dx = px - cx;
-      const dz = pz - cz;
-      const dist = dx * dx + dz * dz;
+      // Determine thrust axis: whichever dimension is larger is the thrust
+      const isHorizontal = block.w > block.d;
 
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestX = cx;
-        bestZ = cz;
+      let ax0, az0, ax1, az1;
+      if (isHorizontal) {
+        // Thrust along x, full depth from start
+        ax0 = bx0;
+        ax1 = bx0 + block.w * progress;
+        az0 = bz0;
+        az1 = bz1;
+      } else {
+        // Thrust along z, full width from start
+        ax0 = bx0;
+        ax1 = bx1;
+        az0 = bz0;
+        az1 = bz0 + block.d * progress;
       }
-    }
 
-    return { x: bestX, z: bestZ };
+      const w = Math.max(0.001, ax1 - ax0);
+      const d = Math.max(0.001, az1 - az0);
+      fillMesh.scale.set(w, d, 1);
+      fillMesh.position.set((ax0 + ax1) / 2, 0, (az0 + az1) / 2);
+      setOutline(outlineGeo, ax0, az0, ax1, az1);
+    };
+
+    updateArm(major, this.lMajorFill, this.lMajorOutlineGeo);
+    updateArm(minor, this.lMinorFill, this.lMinorOutlineGeo);
+
+    // Opacity
+    this.lHingeFill.material.opacity = opacity * this.fillOpacity;
+    this.lHingeOutline.material.opacity = opacity * this.ringOpacity;
+    this.lMajorFill.material.opacity = opacity * this.fillOpacity;
+    this.lMinorFill.material.opacity = opacity * this.fillOpacity;
+    this.lMajorOutline.material.opacity = opacity * this.ringOpacity;
+    this.lMinorOutline.material.opacity = opacity * this.ringOpacity;
   }
 
   _updateRingShape(radius, time) {
     const ringPos = this.ringGeo.attributes.position.array;
     const fillPos = this.fillGeo.attributes.position.array;
     const n = this.ringResolution;
-    const isL = this.pulseVariant === 'lShape' && this.pulseBlocks;
+    const { halfX, halfZ } = this._getHalfExtents();
 
-    let halfX, halfZ;
-    if (isL) {
-      // Compute bounding extent from blocks relative to hinge
-      let maxExtX = 0, maxExtZ = 0;
-      for (const block of this.pulseBlocks) {
-        maxExtX = Math.max(maxExtX, Math.abs(block.x - this._hingeOffX), Math.abs(block.x + block.w - this._hingeOffX));
-        maxExtZ = Math.max(maxExtZ, Math.abs(block.z - this._hingeOffZ), Math.abs(block.z + block.d - this._hingeOffZ));
-      }
-      halfX = maxExtX;
-      halfZ = maxExtZ;
-    } else {
-      const ext = this._getHalfExtents();
-      halfX = ext.halfX;
-      halfZ = ext.halfZ;
-    }
-
-    // Clamp bounds for default mode
+    // Clamp bounds: pulse box AND room edges
     const minX = Math.max(-halfX, -this.centerX);
     const maxX = Math.min( halfX,  this.room.width - this.centerX);
     const minZ = Math.max(-halfZ, -this.centerZ);
@@ -233,15 +308,8 @@ class PulseController {
       const rawX = Math.cos(angle) * r;
       const rawZ = Math.sin(angle) * r;
 
-      let x, z;
-      if (isL) {
-        const clamped = this._clampToBlocks(rawX, rawZ);
-        x = clamped.x;
-        z = clamped.z;
-      } else {
-        x = Math.max(minX, Math.min(maxX, rawX));
-        z = Math.max(minZ, Math.min(maxZ, rawZ));
-      }
+      let x = Math.max(minX, Math.min(maxX, rawX));
+      let z = Math.max(minZ, Math.min(maxZ, rawZ));
 
       ringPos[i * 3]     = x;
       ringPos[i * 3 + 1] = 0;
@@ -263,7 +331,23 @@ class PulseController {
    * Nudge an origin unit by the minimum amount so a full pulse fits in the room.
    */
   _adjustOrigin(x, z) {
-    const { halfX, halfZ } = this._getHalfExtents();
+    let halfX, halfZ;
+
+    if (this.pulseVariant === 'lShape' && this.pulseBlocks) {
+      // Compute extent from blocks relative to hinge
+      let maxX = 0, maxZ = 0;
+      for (const block of this.pulseBlocks) {
+        maxX = Math.max(maxX, Math.abs(block.x - this._hingeOffX), Math.abs(block.x + block.w - this._hingeOffX));
+        maxZ = Math.max(maxZ, Math.abs(block.z - this._hingeOffZ), Math.abs(block.z + block.d - this._hingeOffZ));
+      }
+      halfX = maxX;
+      halfZ = maxZ;
+    } else {
+      const ext = this._getHalfExtents();
+      halfX = ext.halfX;
+      halfZ = ext.halfZ;
+    }
+
     return {
       x: Math.max(halfX, Math.min(this.room.width - halfX, x)),
       z: Math.max(halfZ, Math.min(this.room.height - halfZ, z)),
@@ -351,7 +435,7 @@ class PulseController {
     this.anchored = false;
     this.intervalTimer = 0;
     this.group.visible = false;
-    this.group.visible = false;
+    this.lGroup.visible = false;
   }
 
   /**
@@ -423,28 +507,50 @@ class PulseController {
     if (this.pulsing) {
       this.elapsed += dt;
       const progress = Math.min(1, this.elapsed / this.pulsePeriod);
-
       const eased = 1 - Math.pow(1 - progress, 2);
-
-      const { halfX, halfZ } = this._getHalfExtents();
-      const avgHalf = (halfX + halfZ) / 2;
-      const maxRadius = avgHalf * Math.SQRT2;
-      const minRadius = maxRadius * this.pulseStart;
-      const radius = minRadius + eased * (maxRadius - minRadius);
-
-      this._updateRingShape(radius, this.elapsed);
 
       const fadeIn  = Math.min(1, progress * 5);
       const fadeOut = Math.max(0, 1 - Math.pow(progress, 3));
       const opacity = fadeIn * fadeOut;
 
-      this.ringMat.opacity = opacity * this.ringOpacity;
-      this.fillMat.opacity = opacity * this.fillOpacity;
+      const isL = this.pulseVariant === 'lShape' && this.pulseBlocks;
+
+      if (isL) {
+        // L-shape: two rectangles growing from hinge
+        this.ring.visible = false;
+        this.fill.visible = false;
+        this.lGroup.visible = true;
+        this._updateLShape(eased, opacity);
+      } else {
+        // Default: circle expanding into rectangle
+        this.ring.visible = true;
+        this.fill.visible = true;
+        this.lGroup.visible = false;
+
+        const { halfX, halfZ } = this._getHalfExtents();
+        const avgHalf = (halfX + halfZ) / 2;
+        const maxRadius = avgHalf * Math.SQRT2;
+        const minRadius = maxRadius * this.pulseStart;
+        const radius = minRadius + eased * (maxRadius - minRadius);
+
+        this._updateRingShape(radius, this.elapsed);
+
+        this.ringMat.opacity = opacity * this.ringOpacity;
+        this.fillMat.opacity = opacity * this.fillOpacity;
+      }
 
       if (progress >= 1) {
         this.pulsing = false;
         this.ringMat.opacity = 0;
         this.fillMat.opacity = 0;
+        if (isL) {
+          this.lHingeFill.material.opacity = 0;
+          this.lHingeOutline.material.opacity = 0;
+          this.lMajorFill.material.opacity = 0;
+          this.lMinorFill.material.opacity = 0;
+          this.lMajorOutline.material.opacity = 0;
+          this.lMinorOutline.material.opacity = 0;
+        }
         this.intervalTimer = 0;
       }
     } else {

@@ -23,12 +23,9 @@ const FURNITURE = {
     buffer: 1,
     footprint: {
       type: 'L',
-      majorAxis: 'x',  // blocks authored with major arm along x
-      blocks: [
-        { x: 0, z: 0, w: 8, d: 3 },  // major arm (seats)
-        { x: 0, z: 3, w: 3, d: 5 },  // minor arm (chaise)
-      ],
-      hinge: { x: 0, z: 0, w: 3, d: 3 },  // intersection area
+      hinge: { w: 3, d: 3 },       // corner block where arms meet
+      majorThrust: 5,               // extends beyond hinge along major edge
+      minorThrust: 5,               // extends beyond hinge along minor edge
     },
     mesh: { type: 'box', w: 8, h: 0.35, d: 8 },  // placeholder until L-shape mesh
   },

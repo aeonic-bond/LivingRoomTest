@@ -75,6 +75,7 @@
 <script src="FurnitureConfig.js"></script>
 <script src="SceneData.js"></script>
 <script src="EdgeAffinity.js"></script>
+<script src="CornerAffinity.js"></script>
 <script src="StateController.js"></script>
 <script src="PulseController.js"></script>
 <script src="CursorController.js"></script>
@@ -122,7 +123,8 @@ const cam = new CameraController(camera, container, {
 cam.toDefault();
 
 const sceneCtrl = new SceneController(scene, ROOM, { showGrid: false });
-const edges = new EdgeAffinity(ROOM);
+const edges   = new EdgeAffinity(ROOM);
+const corners = new CornerAffinity(ROOM, edges);
 
 const panels = new PanelController({
   panel:   document.getElementById('dynamicLeftPanel'),
@@ -135,7 +137,7 @@ const cursor = new CursorController(scene, ROOM, canvas, camera, pulse);
 const state  = new StateController();
 const sceneData = new SceneData();
 sceneCtrl.bindData(sceneData);
-const placingMenu = new PlacingMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM);
+const placingMenu = new PlacingMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM, corners);
 
 // ── State wiring ─────────────────────────────────────────────
 state.on('enter:placing', (data) => {

@@ -16,14 +16,16 @@ class PlacingMenu {
    * @param {EdgeAffinity} edges
    * @param {SceneData} sceneData
    * @param {Object} room
+   * @param {CornerAffinity} corners
    */
-  constructor(container, state, camera, canvas, pulse, edges, sceneData, room) {
+  constructor(container, state, camera, canvas, pulse, edges, sceneData, room, corners) {
     this.container = container;
     this.state     = state;
     this.camera    = camera;
     this.canvas    = canvas;
     this.pulse     = pulse;
     this.edges     = edges;
+    this.corners   = corners;
     this.sceneData = sceneData;
     this.room      = room;
 
@@ -160,42 +162,108 @@ class PlacingMenu {
     const data = this.state.data;
     if (!data) return;
 
-    let rotation = 0;
-    if (config.affinity === 'edge') {
-      const edge = this.edges.getNearestEdge(data.x, data.z);
-      rotation = edge ? this.edges.getRotation(edge) : 0;
+    const fp  = config.footprint;
+    const buf = config.buffer;
+
+    if (fp.type === 'L') {
+      // L-shape: compute blocks from hinge + thrusts + corner directions
+      const result = this.corners.getNearestCorner(data.x, data.z);
+      if (!result) return;
+
+      const { majorDir, minorDir } = result;
+      const h = fp.hinge;
+
+      // Hinge block at origin (with buffer on all sides)
+      const hingeBlock = {
+        x: -buf, z: -buf,
+        w: h.w + buf * 2,
+        d: h.d + buf * 2,
+      };
+
+      // Hinge edges (with buffer)
+      const hx0 = -buf, hz0 = -buf;
+      const hx1 = h.w + buf, hz1 = h.d + buf;
+
+      // Major arm: starts flush at hinge edge, extends thrust + buffer outward
+      const majorBlock = {
+        x: majorDir.x > 0 ? hx1 : majorDir.x < 0 ? -(fp.majorThrust + buf) : hx0,
+        z: majorDir.z > 0 ? hz1 : majorDir.z < 0 ? -(fp.majorThrust + buf) : hz0,
+        w: Math.abs(majorDir.x) > 0 ? fp.majorThrust + buf : hx1 - hx0,
+        d: Math.abs(majorDir.z) > 0 ? fp.majorThrust + buf : hz1 - hz0,
+      };
+
+      // Minor arm: starts flush at hinge edge, extends thrust + buffer outward
+      const minorBlock = {
+        x: minorDir.x > 0 ? hx1 : minorDir.x < 0 ? -(fp.minorThrust + buf) : hx0,
+        z: minorDir.z > 0 ? hz1 : minorDir.z < 0 ? -(fp.minorThrust + buf) : hz0,
+        w: Math.abs(minorDir.x) > 0 ? fp.minorThrust + buf : hx1 - hx0,
+        d: Math.abs(minorDir.z) > 0 ? fp.minorThrust + buf : hz1 - hz0,
+      };
+
+      const blocks = [hingeBlock, majorBlock, minorBlock];
+
+      this.pulse.setConfig({
+        pulseVariant: 'lShape',
+        pulseBlocks:  blocks,
+        pulseHinge:   hingeBlock,
+        rotation:     0,
+      });
+    } else {
+      // Rectangle footprint
+      let rotation = 0;
+      if (config.affinity === 'edge') {
+        const edge = this.edges.getNearestEdge(data.x, data.z);
+        rotation = edge ? this.edges.getRotation(edge) : 0;
+      }
+
+      this.pulse.setConfig({
+        pulseVariant: 'default',
+        pulseBlocks:  null,
+        pulseHinge:   null,
+        pulseW:       fp.w + buf * 2,
+        pulseD:       fp.d + buf * 2,
+        rotation:     rotation,
+      });
     }
-
-    const fp = config.footprint;
-    const buf = config.buffer * 2;
-
-    // Skip L-shape footprints until lShape pulse is wired
-    if (fp.type === 'L') return;
-
-    this.pulse.setConfig({
-      pulseW:   fp.w + buf,
-      pulseD:   fp.d + buf,
-      rotation: rotation,
-    });
-
-    // Compute new origin
-    const o = this.pulse._adjustOrigin(data.x, data.z);
 
     // Calculate where plus currently is in world space
     const oldWorldX = this.pulse.group.position.x + this.pulse.plusGroup.position.x;
     const oldWorldZ = this.pulse.group.position.z + this.pulse.plusGroup.position.z;
 
-    // Move group to new origin
-    this.pulse.centerX = o.x;
-    this.pulse.centerZ = o.z;
-    this.pulse.group.position.x = o.x;
-    this.pulse.group.position.z = o.z;
+    if (fp.type === 'L') {
+      // L-shape: find how far the blocks extend from hinge in each direction
+      const blocks = this.pulse.pulseBlocks;
+      const hx = this.pulse._hingeOffX;
+      const hz = this.pulse._hingeOffZ;
+      let extMinX = 0, extMaxX = 0, extMinZ = 0, extMaxZ = 0;
+      for (const b of blocks) {
+        extMinX = Math.min(extMinX, b.x - hx);
+        extMaxX = Math.max(extMaxX, b.x + b.w - hx);
+        extMinZ = Math.min(extMinZ, b.z - hz);
+        extMaxZ = Math.max(extMaxZ, b.z + b.d - hz);
+      }
+      // Clamp hinge position so all blocks stay within room
+      const ox = Math.max(-extMinX, Math.min(this.room.width - extMaxX, data.x));
+      const oz = Math.max(-extMinZ, Math.min(this.room.height - extMaxZ, data.z));
+
+      this.pulse.centerX = ox;
+      this.pulse.centerZ = oz;
+      this.pulse.group.position.x = ox;
+      this.pulse.group.position.z = oz;
+    } else {
+      // Rect: adjust origin to keep pulse in room
+      const o = this.pulse._adjustOrigin(data.x, data.z);
+      this.pulse.centerX = o.x;
+      this.pulse.centerZ = o.z;
+      this.pulse.group.position.x = o.x;
+      this.pulse.group.position.z = o.z;
+    }
 
     // Set plus to its old world position relative to new group position
-    this.pulse.plusGroup.position.x = oldWorldX - o.x;
-    this.pulse.plusGroup.position.z = oldWorldZ - o.z;
+    this.pulse.plusGroup.position.x = oldWorldX - this.pulse.group.position.x;
+    this.pulse.plusGroup.position.z = oldWorldZ - this.pulse.group.position.z;
 
-    // Animate plus to new center
+    // Animate plus to new center (hinge for L-shape, adjusted center for rect)
     this.pulse.animatePlus(0, 0);
     this.pulse.trigger();
   }
