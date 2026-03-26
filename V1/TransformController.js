@@ -28,6 +28,7 @@ class TransformController {
     this.dragging    = false;
     this.didDrag     = false;
     this.dragItemId  = null;
+    this._reorientCooldown = 0;  // seconds remaining before next reorient allowed
     this.grabOffsetX = 0;
     this.grabOffsetZ = 0;
 
@@ -271,7 +272,7 @@ class TransformController {
                        rawZ > bounds.maxZ ? rawZ - bounds.maxZ : 0;
       const rawOver = Math.max(rawOverX, rawOverZ);
 
-      if (rawOver > 1.5) {
+      if (rawOver > 1.5 && this._reorientCooldown <= 0) {
         // Overshoot direction vector
         const overDirX = rawX < bounds.minX ? -1 : rawX > bounds.maxX ? 1 : 0;
         const overDirZ = rawZ < bounds.minZ ? -1 : rawZ > bounds.maxZ ? 1 : 0;
@@ -289,7 +290,17 @@ class TransformController {
           }
         }
         if (newEdge && newEdge.id !== item.edgeId) {
+          // Preview: check if reoriented position would collide
           const newRotation = this.edges.getRotation(newEdge);
+          const tempItem = { ...item, edgeId: newEdge.id, rotation: newRotation };
+          const newBounds = this._getBounds(tempItem);
+          const testX = Math.max(newBounds.minX, Math.min(newBounds.maxX, rawX));
+          const testZ = Math.max(newBounds.minZ, Math.min(newBounds.maxZ, rawZ));
+          const wouldCollide = Collision.findOverlaps(item.type, testX, testZ, tempItem, this.sceneData, item.id);
+
+          if (wouldCollide.length > 0) {
+            // Collision at new orientation — block reorient
+          } else {
           this.sceneData.update(item.id, {
             edgeId: newEdge.id,
             rotation: newRotation,
@@ -297,13 +308,31 @@ class TransformController {
           // Update the 3D mesh rotation
           const mesh = this.sceneCtrl.meshes[item.id];
           if (mesh) mesh.rotation.y = newRotation;
+          // Cooldown before next reorient
+          this._reorientCooldown = 1.0;
           // Recalculate bounds for the new edge
           bounds = this._getBounds(item);
-          // Reset last valid to current clamped position
-          this._lastValidX = Math.max(bounds.minX, Math.min(bounds.maxX, rawX));
-          this._lastValidZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, rawZ));
+          // Reset last valid to current clamped position (with collision check)
+          let newX = Math.max(bounds.minX, Math.min(bounds.maxX, rawX));
+          let newZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, rawZ));
+          const reorientOverlaps = Collision.findOverlaps(item.type, newX, newZ, item, this.sceneData, item.id);
+          if (reorientOverlaps.length > 0) {
+            // Colliding at new position — push away from collider
+            const gap = 0.25;
+            const other = reorientOverlaps[0];
+            const dx = newX - other.x;
+            const dz = newZ - other.z;
+            const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+            newX += (dx / dist) * gap;
+            newZ += (dz / dist) * gap;
+            newX = Math.max(bounds.minX, Math.min(bounds.maxX, newX));
+            newZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, newZ));
+          }
+          this._lastValidX = newX;
+          this._lastValidZ = newZ;
           // Update zone highlight
           this._showItemZone(item);
+          }
         }
       }
     }
@@ -395,6 +424,8 @@ class TransformController {
    * Handles bounce-back animation.
    */
   update(dt) {
+    if (this._reorientCooldown > 0) this._reorientCooldown -= dt;
+
     if (!this._bounceAnim) return;
 
     const b = this._bounceAnim;
