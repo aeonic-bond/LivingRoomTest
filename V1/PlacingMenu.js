@@ -169,6 +169,9 @@ class PlacingMenu {
     const fp = config.footprint;
     const buf = config.buffer * 2;
 
+    // Skip L-shape footprints until lShape pulse is wired
+    if (fp.type === 'L') return;
+
     this.pulse.setConfig({
       pulseW:   fp.w + buf,
       pulseD:   fp.d + buf,

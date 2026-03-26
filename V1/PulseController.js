@@ -31,14 +31,21 @@ class PulseController {
     this.plusOpacity  = 0.8;
 
     // Pulse config
-    this.pulseSize   = 3;       // default square size (used when pulseW/pulseD are null)
-    this.pulseW      = null;    // override width (set by furniture footprint)
-    this.pulseD      = null;    // override depth (set by furniture footprint)
-    this.rotation    = 0;       // radians (from EdgeAffinity, determines axis mapping)
-    this.pulsePeriod = 1;       // seconds per cycle
-    this.interval    = 0.4;     // seconds between pulse starts
-    this.pulseNoise  = 0;       // wobble intensity (0 = perfect circle)
-    this.pulseStart  = 0.3;     // starting radius fraction
+    this.pulseSize    = 3;       // default square size (used when pulseW/pulseD are null)
+    this.pulseW       = null;    // override width (set by furniture footprint)
+    this.pulseD       = null;    // override depth (set by furniture footprint)
+    this.rotation     = 0;       // radians (from EdgeAffinity, determines axis mapping)
+    this.pulseVariant = 'default'; // 'default' or 'lShape'
+    this.pulseBlocks  = null;    // array of { x, z, w, d } for lShape
+    this.pulseHinge   = null;    // { x, z, w, d } hinge block for lShape
+    this.pulsePeriod  = 1;       // seconds per cycle
+    this.interval     = 0.4;     // seconds between pulse starts
+    this.pulseNoise   = 0;       // wobble intensity (0 = perfect circle)
+    this.pulseStart   = 0.3;     // starting radius fraction
+
+    // Internal
+    this._hingeOffX    = 0;
+    this._hingeOffZ    = 0;
 
     // State
     this.active        = false;
@@ -147,13 +154,59 @@ class PulseController {
     };
   }
 
+  /**
+   * Clamp a point to the nearest position inside the union of blocks.
+   * Blocks are relative to the hinge center.
+   */
+  _clampToBlocks(px, pz) {
+    let bestX = 0, bestZ = 0, bestDist = Infinity;
+
+    for (const block of this.pulseBlocks) {
+      // Block bounds relative to hinge center
+      const bx0 = block.x - this._hingeOffX;
+      const bz0 = block.z - this._hingeOffZ;
+      const bx1 = bx0 + block.w;
+      const bz1 = bz0 + block.d;
+
+      const cx = Math.max(bx0, Math.min(bx1, px));
+      const cz = Math.max(bz0, Math.min(bz1, pz));
+      const dx = px - cx;
+      const dz = pz - cz;
+      const dist = dx * dx + dz * dz;
+
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestX = cx;
+        bestZ = cz;
+      }
+    }
+
+    return { x: bestX, z: bestZ };
+  }
+
   _updateRingShape(radius, time) {
     const ringPos = this.ringGeo.attributes.position.array;
     const fillPos = this.fillGeo.attributes.position.array;
     const n = this.ringResolution;
-    const { halfX, halfZ } = this._getHalfExtents();
+    const isL = this.pulseVariant === 'lShape' && this.pulseBlocks;
 
-    // Clamp bounds: pulse box AND room edges (relative to pulse center)
+    let halfX, halfZ;
+    if (isL) {
+      // Compute bounding extent from blocks relative to hinge
+      let maxExtX = 0, maxExtZ = 0;
+      for (const block of this.pulseBlocks) {
+        maxExtX = Math.max(maxExtX, Math.abs(block.x - this._hingeOffX), Math.abs(block.x + block.w - this._hingeOffX));
+        maxExtZ = Math.max(maxExtZ, Math.abs(block.z - this._hingeOffZ), Math.abs(block.z + block.d - this._hingeOffZ));
+      }
+      halfX = maxExtX;
+      halfZ = maxExtZ;
+    } else {
+      const ext = this._getHalfExtents();
+      halfX = ext.halfX;
+      halfZ = ext.halfZ;
+    }
+
+    // Clamp bounds for default mode
     const minX = Math.max(-halfX, -this.centerX);
     const maxX = Math.min( halfX,  this.room.width - this.centerX);
     const minZ = Math.max(-halfZ, -this.centerZ);
@@ -177,11 +230,18 @@ class PulseController {
 
       const r = radius * wobble;
 
-      // Expand as circle, clamp to rectangular bounds
       const rawX = Math.cos(angle) * r;
       const rawZ = Math.sin(angle) * r;
-      let x = Math.max(minX, Math.min(maxX, rawX));
-      let z = Math.max(minZ, Math.min(maxZ, rawZ));
+
+      let x, z;
+      if (isL) {
+        const clamped = this._clampToBlocks(rawX, rawZ);
+        x = clamped.x;
+        z = clamped.z;
+      } else {
+        x = Math.max(minX, Math.min(maxX, rawX));
+        z = Math.max(minZ, Math.min(maxZ, rawZ));
+      }
 
       ringPos[i * 3]     = x;
       ringPos[i * 3 + 1] = 0;
@@ -308,22 +368,44 @@ class PulseController {
     if (config.pulseStart !== undefined)  this.pulseStart  = config.pulseStart;
     if (config.fillColor !== undefined)   { this.fillColor = config.fillColor; this.fillMat.color = config.fillColor; }
     if (config.strokeColor !== undefined) { this.strokeColor = config.strokeColor; this.ringMat.color = config.strokeColor; }
+    if (config.pulseVariant !== undefined) this.pulseVariant = config.pulseVariant;
+    if (config.pulseBlocks !== undefined) {
+      this.pulseBlocks = config.pulseBlocks;
+      // Precompute hinge center offset for block clamping
+      if (config.pulseHinge) {
+        this.pulseHinge = config.pulseHinge;
+        this._hingeOffX = config.pulseHinge.x + config.pulseHinge.w / 2;
+        this._hingeOffZ = config.pulseHinge.z + config.pulseHinge.d / 2;
+      }
+    }
+    if (config.pulseHinge !== undefined && !config.pulseBlocks) {
+      this.pulseHinge = config.pulseHinge;
+      if (config.pulseHinge) {
+        this._hingeOffX = config.pulseHinge.x + config.pulseHinge.w / 2;
+        this._hingeOffZ = config.pulseHinge.z + config.pulseHinge.d / 2;
+      }
+    }
   }
 
   /**
    * Reset config to defaults.
    */
   resetConfig() {
-    this.pulseSize   = 3;
-    this.pulseW      = null;
-    this.pulseD      = null;
-    this.rotation    = 0;
-    this.pulsePeriod = 1;
-    this.interval    = 0.4;
-    this.pulseNoise  = 0;
-    this.pulseStart  = 0.3;
-    this.fillColor   = new THREE.Color(0xffaacc);
-    this.strokeColor = PULSE_COLOR_DIVIDER;
+    this.pulseSize    = 3;
+    this.pulseW       = null;
+    this.pulseD       = null;
+    this.rotation     = 0;
+    this.pulseVariant = 'default';
+    this.pulseBlocks  = null;
+    this.pulseHinge   = null;
+    this._hingeOffX   = 0;
+    this._hingeOffZ   = 0;
+    this.pulsePeriod  = 1;
+    this.interval     = 0.4;
+    this.pulseNoise   = 0;
+    this.pulseStart   = 0.3;
+    this.fillColor    = new THREE.Color(0xffaacc);
+    this.strokeColor  = PULSE_COLOR_DIVIDER;
     this.fillMat.color = this.fillColor;
     this.ringMat.color = this.strokeColor;
   }

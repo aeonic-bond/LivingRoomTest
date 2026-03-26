@@ -19,10 +19,18 @@ const FURNITURE = {
   sectional: {
     id: 'sectional',
     label: 'Sectional',
-    affinity: 'corner',  // deferred
+    affinity: 'corner',
     buffer: 1,
-    footprint: { w: 8, d: 8 },
-    mesh: { type: 'box', w: 8, h: 0.35, d: 8 },
+    footprint: {
+      type: 'L',
+      majorAxis: 'x',  // blocks authored with major arm along x
+      blocks: [
+        { x: 0, z: 0, w: 8, d: 3 },  // major arm (seats)
+        { x: 0, z: 3, w: 3, d: 5 },  // minor arm (chaise)
+      ],
+      hinge: { x: 0, z: 0, w: 3, d: 3 },  // intersection area
+    },
+    mesh: { type: 'box', w: 8, h: 0.35, d: 8 },  // placeholder until L-shape mesh
   },
   chair: {
     id: 'chair',
