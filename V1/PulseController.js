@@ -154,13 +154,25 @@ class PulseController {
   // ── Public API ───────────────────────────────────────────
 
   /**
+   * Nudge an origin unit by the minimum amount so a full pulse fits in the room.
+   */
+  _adjustOrigin(x, z) {
+    const half = this.pulseSize / 2;
+    return {
+      x: Math.max(half, Math.min(this.room.width - half, x)),
+      z: Math.max(half, Math.min(this.room.height - half, z)),
+    };
+  }
+
+  /**
    * Start pulsing at a position. Follows future setPosition calls.
    */
   start(x, z) {
-    this.centerX = x;
-    this.centerZ = z;
-    this.group.position.x = x;
-    this.group.position.z = z;
+    const o = this._adjustOrigin(x, z);
+    this.centerX = o.x;
+    this.centerZ = o.z;
+    this.group.position.x = o.x;
+    this.group.position.z = o.z;
     this.active = true;
     this.anchored = false;
     this.lastTime = performance.now();
@@ -180,10 +192,11 @@ class PulseController {
    */
   setPosition(x, z) {
     if (this.anchored) return;
-    this.centerX = x;
-    this.centerZ = z;
-    this.group.position.x = x;
-    this.group.position.z = z;
+    const o = this._adjustOrigin(x, z);
+    this.centerX = o.x;
+    this.centerZ = o.z;
+    this.group.position.x = o.x;
+    this.group.position.z = o.z;
   }
 
   /**
