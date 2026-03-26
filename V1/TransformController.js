@@ -13,14 +13,16 @@ class TransformController {
    * @param {SceneData} sceneData
    * @param {SceneController} sceneCtrl
    * @param {StateController} state
+   * @param {EdgeAffinity} edges
    */
-  constructor(canvas, camera, room, sceneData, sceneCtrl, state) {
+  constructor(canvas, camera, room, sceneData, sceneCtrl, state, edges) {
     this.canvas    = canvas;
     this.camera    = camera;
     this.room      = room;
     this.sceneData = sceneData;
     this.sceneCtrl = sceneCtrl;
     this.state     = state;
+    this.edges     = edges;
 
     // Drag state
     this.dragging    = false;
@@ -152,6 +154,56 @@ class TransformController {
     return false;
   }
 
+  /**
+   * Compute movement bounds for an item based on room edges and edge affinity zone.
+   */
+  _getBounds(item) {
+    const config = FURNITURE[item.type];
+    const fp = config.footprint;
+
+    // Half extents accounting for rotation
+    const cosR = Math.abs(Math.cos(item.rotation || 0));
+    const sinR = Math.abs(Math.sin(item.rotation || 0));
+    const halfW = (fp.w * cosR + fp.d * sinR) / 2;
+    const halfD = (fp.w * sinR + fp.d * cosR) / 2;
+
+    // Room edge bounds
+    let minX = halfW;
+    let maxX = this.room.width - halfW;
+    let minZ = halfD;
+    let maxZ = this.room.height - halfD;
+
+    // Edge-affinity: tighter bounds on the depth axis
+    if (config.affinity === 'edge' && item.edgeId != null) {
+      const edge = this.edges.getEdge(item.edgeId);
+      if (edge) {
+        if (Math.abs(edge.normal.z) > Math.abs(edge.normal.x)) {
+          const edgeZ = (edge.z1 + edge.z2) / 2;
+          const zoneLimit = edgeZ + edge.normal.z * edge.zoneDepth;
+          if (edge.normal.z > 0) {
+            minZ = Math.max(minZ, edgeZ + halfD);
+            maxZ = Math.min(maxZ, zoneLimit - halfD);
+          } else {
+            minZ = Math.max(minZ, zoneLimit + halfD);
+            maxZ = Math.min(maxZ, edgeZ - halfD);
+          }
+        } else {
+          const edgeX = (edge.x1 + edge.x2) / 2;
+          const zoneLimit = edgeX + edge.normal.x * edge.zoneDepth;
+          if (edge.normal.x > 0) {
+            minX = Math.max(minX, edgeX + halfW);
+            maxX = Math.min(maxX, zoneLimit - halfW);
+          } else {
+            minX = Math.max(minX, zoneLimit + halfW);
+            maxX = Math.min(maxX, edgeX - halfW);
+          }
+        }
+      }
+    }
+
+    return { minX, maxX, minZ, maxZ };
+  }
+
   _onMouseDown(e) {
     if (e.button !== 0) return;
     if (!this.state.is(STATES.DEFAULT) && !this.state.is(STATES.SELECTED)) return;
@@ -162,9 +214,9 @@ class TransformController {
     const item = this._hitTest(pos.x, pos.z);
     if (!item) return;
 
-    // Only interact with no-affinity items for now
+    // Skip corner-affinity items for now
     const config = FURNITURE[item.type];
-    if (config.affinity !== 'none') return;
+    if (config.affinity === 'corner') return;
 
     // Start pending drag — don't enter TRANSFORM until mouse moves
     this._pending = true;
@@ -197,23 +249,68 @@ class TransformController {
       this._lastValidZ = dragItem ? dragItem.z : 0;
       this.state.set(STATES.TRANSFORM);
       this.canvas.style.cursor = 'grabbing';
+      // Show zone
+      if (dragItem) this._showItemZone(dragItem);
     }
 
     const item = this.sceneData.get(this.dragItemId);
     if (!item) return;
 
-    const config = FURNITURE[item.type];
-    const fp = config.footprint;
-    const halfW = fp.w / 2;
-    const halfD = fp.d / 2;
-
     // Target position with grab offset
     const rawX = pos.x + this.grabOffsetX;
     const rawZ = pos.z + this.grabOffsetZ;
 
-    // Soft bounds for room edges
-    let x = this.softBounds(rawX, halfW, this.room.width - halfW);
-    let z = this.softBounds(rawZ, halfD, this.room.height - halfD);
+    let bounds = this._getBounds(item);
+
+    // Check for hard reorientation (edge-affinity items only)
+    const config = FURNITURE[item.type];
+    if (config.affinity === 'edge' && item.edgeId != null) {
+      const rawOverX = rawX < bounds.minX ? bounds.minX - rawX :
+                       rawX > bounds.maxX ? rawX - bounds.maxX : 0;
+      const rawOverZ = rawZ < bounds.minZ ? bounds.minZ - rawZ :
+                       rawZ > bounds.maxZ ? rawZ - bounds.maxZ : 0;
+      const rawOver = Math.max(rawOverX, rawOverZ);
+
+      if (rawOver > 1.5) {
+        // Overshoot direction vector
+        const overDirX = rawX < bounds.minX ? -1 : rawX > bounds.maxX ? 1 : 0;
+        const overDirZ = rawZ < bounds.minZ ? -1 : rawZ > bounds.maxZ ? 1 : 0;
+
+        // Find the edge the item is moving toward
+        // The target edge's normal opposes the overshoot direction
+        // (you drag toward a wall, that wall's normal points back at you)
+        let newEdge = null;
+        let bestDot = Infinity;
+        for (const edge of this.edges.edges) {
+          const dot = overDirX * edge.normal.x + overDirZ * edge.normal.z;
+          if (dot < bestDot) {
+            bestDot = dot;
+            newEdge = edge;
+          }
+        }
+        if (newEdge && newEdge.id !== item.edgeId) {
+          const newRotation = this.edges.getRotation(newEdge);
+          this.sceneData.update(item.id, {
+            edgeId: newEdge.id,
+            rotation: newRotation,
+          });
+          // Update the 3D mesh rotation
+          const mesh = this.sceneCtrl.meshes[item.id];
+          if (mesh) mesh.rotation.y = newRotation;
+          // Recalculate bounds for the new edge
+          bounds = this._getBounds(item);
+          // Reset last valid to current clamped position
+          this._lastValidX = Math.max(bounds.minX, Math.min(bounds.maxX, rawX));
+          this._lastValidZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, rawZ));
+          // Update zone highlight
+          this._showItemZone(item);
+        }
+      }
+    }
+
+    // Soft bounds
+    let x = this.softBounds(rawX, bounds.minX, bounds.maxX);
+    let z = this.softBounds(rawZ, bounds.minZ, bounds.maxZ);
 
     // Check collision with other items
     const overlaps = Collision.findOverlaps(item.type, x, z, item, this.sceneData, item.id);
@@ -248,23 +345,20 @@ class TransformController {
     this.dragging = false;
     this.didDrag = true;
     this.canvas.style.cursor = '';
+    this.sceneCtrl.hideZone();
 
     // Bounce back if outside valid bounds or colliding
     if (item) {
-      const config = FURNITURE[item.type];
-      const fp = config.footprint;
-      const halfW = fp.w / 2;
-      const halfD = fp.d / 2;
+      const { minX, maxX, minZ, maxZ } = this._getBounds(item);
 
-      // Clamp to room edges
-      let endX = Math.max(halfW, Math.min(this.room.width - halfW, item.x));
-      let endZ = Math.max(halfD, Math.min(this.room.height - halfD, item.z));
+      // Clamp to bounds
+      let endX = Math.max(minX, Math.min(maxX, item.x));
+      let endZ = Math.max(minZ, Math.min(maxZ, item.z));
 
-      // If still colliding after edge clamp, bounce to last valid position + gap
+      // If still colliding after clamp, bounce to last valid position + gap
       const overlaps = Collision.findOverlaps(item.type, endX, endZ, item, this.sceneData, item.id);
       if (overlaps.length > 0) {
         const gap = 0.25;
-        // Direction from colliding object center to dragged item's last valid position
         const other = overlaps[0];
         const dx = this._lastValidX - other.x;
         const dz = this._lastValidZ - other.z;
@@ -272,9 +366,8 @@ class TransformController {
         endX = this._lastValidX + (dx / dist) * gap;
         endZ = this._lastValidZ + (dz / dist) * gap;
 
-        // Re-clamp to room edges
-        endX = Math.max(halfW, Math.min(this.room.width - halfW, endX));
-        endZ = Math.max(halfD, Math.min(this.room.height - halfD, endZ));
+        endX = Math.max(minX, Math.min(maxX, endX));
+        endZ = Math.max(minZ, Math.min(maxZ, endZ));
       }
 
       if (item.x !== endX || item.z !== endZ) {
@@ -315,5 +408,37 @@ class TransformController {
     this.sceneData.update(b.itemId, { x, z });
 
     if (t >= 1) this._bounceAnim = null;
+  }
+
+  /**
+   * Show the movement zone for an item.
+   */
+  _showItemZone(item) {
+    const config = FURNITURE[item.type];
+    if (!config) return;
+
+    if (config.affinity === 'none') {
+      // Full room
+      this.sceneCtrl.showZone(0, 0, this.room.width, this.room.height);
+    } else if (config.affinity === 'edge' && item.edgeId != null) {
+      const edge = this.edges.getEdge(item.edgeId);
+      if (!edge) return;
+
+      if (Math.abs(edge.normal.z) > Math.abs(edge.normal.x)) {
+        // Horizontal edge
+        const edgeZ = (edge.z1 + edge.z2) / 2;
+        const zoneLimit = edgeZ + edge.normal.z * edge.zoneDepth;
+        const z0 = Math.min(edgeZ, zoneLimit);
+        const z1 = Math.max(edgeZ, zoneLimit);
+        this.sceneCtrl.showZone(0, z0, this.room.width, z1);
+      } else {
+        // Vertical edge
+        const edgeX = (edge.x1 + edge.x2) / 2;
+        const zoneLimit = edgeX + edge.normal.x * edge.zoneDepth;
+        const x0 = Math.min(edgeX, zoneLimit);
+        const x1 = Math.max(edgeX, zoneLimit);
+        this.sceneCtrl.showZone(x0, 0, x1, this.room.height);
+      }
+    }
   }
 }

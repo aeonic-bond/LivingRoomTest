@@ -103,6 +103,60 @@ class SceneController {
     this.gridGroup.visible = visible;
   }
 
+  // ── Zone highlight ─────────────────────────────────────
+
+  showZone(minX, minZ, maxX, maxZ) {
+    this.hideZone();
+    const w = maxX - minX;
+    const d = maxZ - minZ;
+
+    this._zoneFillTarget  = 0.06;
+    this._zoneBorderTarget = 0.2;
+
+    const zoneMat = new THREE.MeshBasicMaterial({
+      color: 0x378ADD,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    this._zoneFill = new THREE.Mesh(new THREE.PlaneGeometry(w, d), zoneMat);
+    this._zoneFill.rotation.x = -Math.PI / 2;
+    this._zoneFill.position.set(minX + w / 2, 0.002, minZ + d / 2);
+    this.scene.add(this._zoneFill);
+
+    const borderMat = new THREE.LineBasicMaterial({
+      color: 0x378ADD,
+      transparent: true,
+      opacity: 0,
+    });
+    const pts = [
+      new THREE.Vector3(minX, 0.004, minZ),
+      new THREE.Vector3(maxX, 0.004, minZ),
+      new THREE.Vector3(maxX, 0.004, maxZ),
+      new THREE.Vector3(minX, 0.004, maxZ),
+      new THREE.Vector3(minX, 0.004, minZ),
+    ];
+    this._zoneBorder = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      borderMat
+    );
+    this.scene.add(this._zoneBorder);
+  }
+
+  hideZone() {
+    if (this._zoneFill) { this.scene.remove(this._zoneFill); this._zoneFill = null; }
+    if (this._zoneBorder) { this.scene.remove(this._zoneBorder); this._zoneBorder = null; }
+  }
+
+  updateZone() {
+    if (!this._zoneFill || !this._zoneBorder) return;
+    const lerp = 0.12;
+    const fillMat = this._zoneFill.material;
+    const borderMat = this._zoneBorder.material;
+    fillMat.opacity += (this._zoneFillTarget - fillMat.opacity) * lerp;
+    borderMat.opacity += (this._zoneBorderTarget - borderMat.opacity) * lerp;
+  }
+
   // ── Selection outline ──────────────────────────────────
 
   selectItem(itemId) {
