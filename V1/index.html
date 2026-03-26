@@ -72,6 +72,7 @@
 <script src="PanelController.js"></script>
 <script src="SceneController.js"></script>
 <script src="StateController.js"></script>
+<script src="PulseController.js"></script>
 <script src="CursorController.js"></script>
 <script src="PlacingMenu.js"></script>
 <script>
@@ -129,22 +130,24 @@ const panels = new PanelController({
   onChange: () => resize(),
 });
 
-const cursor = new CursorController(scene, ROOM, canvas, camera);
+const pulse  = new PulseController(scene, ROOM);
+const cursor = new CursorController(scene, ROOM, canvas, camera, pulse);
 const state  = new StateController();
 const placingMenu = new PlacingMenu(container, state, camera, canvas);
 
 // ── State wiring ─────────────────────────────────────────────
 state.on('enter:placing', (data) => {
   cursor.disable();
+  pulse.startAnchored(data.x, data.z);
 });
 
 state.on('enter:default', () => {
   cursor.enable();
+  pulse.resetConfig();
 });
 
 canvas.addEventListener('click', (e) => {
   if (state.is(STATES.DEFAULT)) {
-    // Get click position on grid
     const rect = canvas.getBoundingClientRect();
     const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -176,7 +179,7 @@ window.addEventListener('resize', resize);
 
 (function animate() {
   requestAnimationFrame(animate);
-  cursor.update();
+  pulse.update();
   renderer.render(scene, camera);
 })();
 </script>
