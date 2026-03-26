@@ -13,8 +13,9 @@
 
 // ── State definitions ────────────────────────────────────────
 const STATES = {
-  DEFAULT: 'default',
+  DEFAULT:  'default',
   PLACING:  'placing',
+  SELECTED: 'selected',
 };
 
 class StateController {

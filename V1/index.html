@@ -73,6 +73,7 @@
 <script src="SceneController.js"></script>
 <script src="RoomConfig.js"></script>
 <script src="FurnitureConfig.js"></script>
+<script src="SceneData.js"></script>
 <script src="EdgeAffinity.js"></script>
 <script src="StateController.js"></script>
 <script src="PulseController.js"></script>
@@ -132,12 +133,18 @@ const panels = new PanelController({
 const pulse  = new PulseController(scene, ROOM);
 const cursor = new CursorController(scene, ROOM, canvas, camera, pulse);
 const state  = new StateController();
-const placingMenu = new PlacingMenu(container, state, camera, canvas);
+const sceneData = new SceneData();
+const placingMenu = new PlacingMenu(container, state, camera, canvas, pulse, edges, sceneData);
 
 // ── State wiring ─────────────────────────────────────────────
 state.on('enter:placing', (data) => {
   cursor.disable();
   pulse.startAnchored(data.x, data.z);
+});
+
+state.on('enter:selected', (data) => {
+  cursor.disable();
+  pulse.stop();
 });
 
 state.on('enter:default', () => {
@@ -162,6 +169,8 @@ canvas.addEventListener('click', (e) => {
       }
     }
   } else if (state.is(STATES.PLACING)) {
+    state.set(STATES.DEFAULT);
+  } else if (state.is(STATES.SELECTED)) {
     state.set(STATES.DEFAULT);
   }
 });

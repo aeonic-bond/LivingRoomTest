@@ -28,7 +28,10 @@ class PulseController {
     this.fillOpacity = 0.1;
 
     // Pulse config
-    this.pulseSize   = 3;       // default 3x3 units
+    this.pulseSize   = 3;       // default square size (used when pulseW/pulseD are null)
+    this.pulseW      = null;    // override width (set by furniture footprint)
+    this.pulseD      = null;    // override depth (set by furniture footprint)
+    this.rotation    = 0;       // radians (from EdgeAffinity, determines axis mapping)
     this.pulsePeriod = 1;       // seconds per cycle
     this.interval    = 0.4;     // seconds between pulse starts
     this.pulseNoise  = 0;       // wobble intensity (0 = perfect circle)
@@ -105,20 +108,37 @@ class PulseController {
 
   // ── Shape ────────────────────────────────────────────────
 
+  /**
+   * Get the axis-aligned half-extents of the pulse.
+   * Uses pulseW/pulseD if set, otherwise falls back to pulseSize.
+   * Rotation swaps which dimension maps to which world axis.
+   */
+  _getHalfExtents() {
+    const w = this.pulseW !== null ? this.pulseW : this.pulseSize;
+    const d = this.pulseD !== null ? this.pulseD : this.pulseSize;
+    const cosR = Math.abs(Math.cos(this.rotation));
+    const sinR = Math.abs(Math.sin(this.rotation));
+    return {
+      halfX: (w * cosR + d * sinR) / 2,
+      halfZ: (w * sinR + d * cosR) / 2,
+    };
+  }
+
   _updateRingShape(radius, time) {
     const ringPos = this.ringGeo.attributes.position.array;
     const fillPos = this.fillGeo.attributes.position.array;
     const n = this.ringResolution;
-    const half = this.pulseSize / 2;
+    const { halfX, halfZ } = this._getHalfExtents();
 
     // Clamp bounds: pulse box AND room edges (relative to pulse center)
-    const minX = Math.max(-half, -this.centerX);
-    const maxX = Math.min( half,  this.room.width - this.centerX);
-    const minZ = Math.max(-half, -this.centerZ);
-    const maxZ = Math.min( half,  this.room.height - this.centerZ);
+    const minX = Math.max(-halfX, -this.centerX);
+    const maxX = Math.min( halfX,  this.room.width - this.centerX);
+    const minZ = Math.max(-halfZ, -this.centerZ);
+    const maxZ = Math.min( halfZ,  this.room.height - this.centerZ);
 
     const maxNoise = this.pulseNoise;
-    const noiseStrength = maxNoise * Math.min(1, radius / (half * 0.7));
+    const avgHalf = (halfX + halfZ) / 2;
+    const noiseStrength = maxNoise * Math.min(1, radius / (avgHalf * 0.7));
 
     fillPos[0] = 0;
     fillPos[1] = 0;
@@ -134,8 +154,11 @@ class PulseController {
 
       const r = radius * wobble;
 
-      let x = Math.max(minX, Math.min(maxX, Math.cos(angle) * r));
-      let z = Math.max(minZ, Math.min(maxZ, Math.sin(angle) * r));
+      // Expand as ellipse matching axis extents, clamp to box and room
+      const rawX = Math.cos(angle) * r * (halfX / avgHalf);
+      const rawZ = Math.sin(angle) * r * (halfZ / avgHalf);
+      let x = Math.max(minX, Math.min(maxX, rawX));
+      let z = Math.max(minZ, Math.min(maxZ, rawZ));
 
       ringPos[i * 3]     = x;
       ringPos[i * 3 + 1] = 0;
@@ -157,10 +180,10 @@ class PulseController {
    * Nudge an origin unit by the minimum amount so a full pulse fits in the room.
    */
   _adjustOrigin(x, z) {
-    const half = this.pulseSize / 2;
+    const { halfX, halfZ } = this._getHalfExtents();
     return {
-      x: Math.max(half, Math.min(this.room.width - half, x)),
-      z: Math.max(half, Math.min(this.room.height - half, z)),
+      x: Math.max(halfX, Math.min(this.room.width - halfX, x)),
+      z: Math.max(halfZ, Math.min(this.room.height - halfZ, z)),
     };
   }
 
@@ -215,6 +238,9 @@ class PulseController {
    */
   setConfig(config) {
     if (config.pulseSize !== undefined)   this.pulseSize   = config.pulseSize;
+    if (config.pulseW !== undefined)      this.pulseW      = config.pulseW;
+    if (config.pulseD !== undefined)      this.pulseD      = config.pulseD;
+    if (config.rotation !== undefined)    this.rotation    = config.rotation;
     if (config.pulsePeriod !== undefined) this.pulsePeriod = config.pulsePeriod;
     if (config.interval !== undefined)    this.interval    = config.interval;
     if (config.pulseNoise !== undefined)  this.pulseNoise  = config.pulseNoise;
@@ -228,6 +254,9 @@ class PulseController {
    */
   resetConfig() {
     this.pulseSize   = 3;
+    this.pulseW      = null;
+    this.pulseD      = null;
+    this.rotation    = 0;
     this.pulsePeriod = 1;
     this.interval    = 0.4;
     this.pulseNoise  = 0;
@@ -254,8 +283,9 @@ class PulseController {
 
       const eased = 1 - Math.pow(1 - progress, 2);
 
-      const half = this.pulseSize / 2;
-      const maxRadius = half * Math.SQRT2;
+      const { halfX, halfZ } = this._getHalfExtents();
+      const avgHalf = (halfX + halfZ) / 2;
+      const maxRadius = avgHalf * Math.SQRT2;
       const minRadius = maxRadius * this.pulseStart;
       const radius = minRadius + eased * (maxRadius - minRadius);
 

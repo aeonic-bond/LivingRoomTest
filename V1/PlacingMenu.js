@@ -8,16 +8,22 @@
 
 class PlacingMenu {
   /**
-   * @param {HTMLElement} container - the scene container to append the menu into
+   * @param {HTMLElement} container
    * @param {StateController} state
    * @param {THREE.OrthographicCamera} camera
    * @param {HTMLCanvasElement} canvas
+   * @param {PulseController} pulse
+   * @param {EdgeAffinity} edges
+   * @param {SceneData} sceneData
    */
-  constructor(container, state, camera, canvas) {
+  constructor(container, state, camera, canvas, pulse, edges, sceneData) {
     this.container = container;
     this.state     = state;
     this.camera    = camera;
     this.canvas    = canvas;
+    this.pulse     = pulse;
+    this.edges     = edges;
+    this.sceneData = sceneData;
 
     this._buildDOM();
     this._bindState();
@@ -43,6 +49,8 @@ class PlacingMenu {
       row.appendChild(icon);
       row.appendChild(label);
 
+      row.addEventListener('mouseenter', () => this._onHover(type.id));
+      row.addEventListener('mouseleave', () => this._onHoverEnd());
       row.addEventListener('click', (e) => {
         e.stopPropagation();
         this._onSelect(type.id);
@@ -110,10 +118,62 @@ class PlacingMenu {
     this.el.style.display = 'none';
   }
 
+  _onHover(typeId) {
+    const config = FURNITURE[typeId];
+    if (!config || config.affinity !== 'edge') return;
+
+    const data = this.state.data;
+    if (!data) return;
+
+    const edge = this.edges.getNearestEdge(data.x, data.z);
+    const rotation = edge ? this.edges.getRotation(edge) : 0;
+
+    this.pulse.setConfig({
+      pulseW:   config.footprint.w + config.buffer * 2,
+      pulseD:   config.footprint.d + config.buffer * 2,
+      rotation: rotation,
+    });
+
+    // Re-adjust origin for the new size
+    const o = this.pulse._adjustOrigin(data.x, data.z);
+    this.pulse.centerX = o.x;
+    this.pulse.centerZ = o.z;
+    this.pulse.group.position.x = o.x;
+    this.pulse.group.position.z = o.z;
+  }
+
+  _onHoverEnd() {
+    this.pulse.resetConfig();
+
+    // Re-adjust origin back to default size
+    const data = this.state.data;
+    if (data) {
+      const o = this.pulse._adjustOrigin(data.x, data.z);
+      this.pulse.centerX = o.x;
+      this.pulse.centerZ = o.z;
+      this.pulse.group.position.x = o.x;
+      this.pulse.group.position.z = o.z;
+    }
+  }
+
   _onSelect(typeId) {
     const data = this.state.data;
-    // TODO: hand off to furniture placement system
-    console.log('Place:', typeId, 'at', data);
-    this.state.set(STATES.DEFAULT);
+    if (!data) return;
+
+    const config = FURNITURE[typeId];
+    const edge = config.affinity === 'edge'
+      ? this.edges.getNearestEdge(data.x, data.z)
+      : null;
+    const rotation = edge ? this.edges.getRotation(edge) : 0;
+
+    const item = this.sceneData.add({
+      type:     typeId,
+      x:        data.x,
+      z:        data.z,
+      rotation: rotation,
+      edgeId:   edge ? edge.id : null,
+    });
+
+    this.state.set(STATES.SELECTED, { itemId: item.id });
   }
 }

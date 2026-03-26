@@ -102,4 +102,5 @@ class SceneController {
   setGridVisible(visible) {
     this.gridGroup.visible = visible;
   }
+
 }
