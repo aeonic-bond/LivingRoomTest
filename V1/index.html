@@ -42,6 +42,27 @@
     height: 100%;
   }
 
+  /* ── Undo Button ─────────────────────────────────────────── */
+  .undo-btn {
+    position: absolute;
+    z-index: 20;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-white-base);
+    border: 1px solid var(--color-divider-gray-base);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-black-off);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .undo-btn:hover {
+    border-color: var(--color-text-black-off);
+  }
+
   /* ── Room Label (HTML overlay) ──────────────────────────── */
   .room-label {
     position: absolute;
@@ -63,6 +84,7 @@
   <div class="panel-handle" id="panelHandle"></div>
   <div class="scene-container" id="sceneContainer">
     <canvas id="canvas"></canvas>
+    <button class="undo-btn" id="undoBtn">UNDO</button>
     <div class="room-label" id="roomLabel"></div>
   </div>
 </div>
@@ -179,14 +201,38 @@ canvas.addEventListener('click', (e) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+//  UNDO
+// ══════════════════════════════════════════════════════════════
+const undoBtn = document.getElementById('undoBtn');
+undoBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const items = sceneData.items;
+  if (items.length > 0) {
+    sceneData.remove(items[items.length - 1].id);
+    if (state.is(STATES.SELECTED)) state.set(STATES.DEFAULT);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 //  RENDER + RESIZE
 // ══════════════════════════════════════════════════════════════
 function resize() {
   cam.resize(frustumSize);
   renderer.setSize(container.clientWidth, container.clientHeight);
+  positionUndo();
 }
 
-window.addEventListener('resize', resize);
+function positionUndo() {
+  // Position undo button 16px above the grid's top edge
+  const v = new THREE.Vector3(ROOM.width / 2, 0, 0);
+  v.project(camera);
+  const rect = canvas.getBoundingClientRect();
+  const gridTopY = (-v.y + 1) / 2 * rect.height;
+  undoBtn.style.top = (gridTopY - 16 - undoBtn.offsetHeight) + 'px';
+}
+
+window.addEventListener('resize', () => { resize(); positionUndo(); });
+positionUndo();
 
 (function animate() {
   requestAnimationFrame(animate);
