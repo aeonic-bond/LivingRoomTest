@@ -134,6 +134,7 @@ const pulse  = new PulseController(scene, ROOM);
 const cursor = new CursorController(scene, ROOM, canvas, camera, pulse);
 const state  = new StateController();
 const sceneData = new SceneData();
+sceneCtrl.bindData(sceneData);
 const placingMenu = new PlacingMenu(container, state, camera, canvas, pulse, edges, sceneData);
 
 // ── State wiring ─────────────────────────────────────────────

@@ -154,9 +154,9 @@ class PulseController {
 
       const r = radius * wobble;
 
-      // Expand as ellipse matching axis extents, clamp to box and room
-      const rawX = Math.cos(angle) * r * (halfX / avgHalf);
-      const rawZ = Math.sin(angle) * r * (halfZ / avgHalf);
+      // Expand as circle, clamp to rectangular bounds
+      const rawX = Math.cos(angle) * r;
+      const rawZ = Math.sin(angle) * r;
       let x = Math.max(minX, Math.min(maxX, rawX));
       let z = Math.max(minZ, Math.min(maxZ, rawZ));
 

@@ -103,4 +103,53 @@ class SceneController {
     this.gridGroup.visible = visible;
   }
 
+  // ── Furniture rendering ─────────────────────────────────
+
+  /**
+   * Bind to a SceneData instance to render furniture.
+   * Call after construction.
+   */
+  bindData(sceneData) {
+    this.sceneData = sceneData;
+    this.meshes = {};
+    sceneData.on('add', (item) => this._addMesh(item));
+    sceneData.on('remove', (item) => this._removeMesh(item));
+    sceneData.on('update', (item) => this._updateMesh(item));
+  }
+
+  _addMesh(item) {
+    const config = FURNITURE[item.type];
+    if (!config) return;
+
+    const m = config.mesh;
+    const mat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5 });
+    const geo = new THREE.BoxGeometry(m.w, m.h, m.d);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const group = new THREE.Group();
+    mesh.position.y = m.h / 2;
+    group.add(mesh);
+
+    group.position.set(item.x, 0, item.z);
+    group.rotation.y = item.rotation || 0;
+
+    this.scene.add(group);
+    this.meshes[item.id] = group;
+  }
+
+  _removeMesh(item) {
+    const group = this.meshes[item.id];
+    if (!group) return;
+    this.scene.remove(group);
+    delete this.meshes[item.id];
+  }
+
+  _updateMesh(item) {
+    const group = this.meshes[item.id];
+    if (!group) return;
+    group.position.set(item.x, 0, item.z);
+    group.rotation.y = item.rotation || 0;
+  }
 }
