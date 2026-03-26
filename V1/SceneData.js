@@ -32,8 +32,11 @@ class SceneData {
       x: entry.x,
       z: entry.z,
       rotation: entry.rotation || 0,
-      edgeId: entry.edgeId !== undefined ? entry.edgeId : null,
-      variant: entry.variant || null,
+      edgeId:      entry.edgeId !== undefined ? entry.edgeId : null,
+      cornerId:    entry.cornerId !== undefined ? entry.cornerId : null,
+      majorEdgeId: entry.majorEdgeId !== undefined ? entry.majorEdgeId : null,
+      minorEdgeId: entry.minorEdgeId !== undefined ? entry.minorEdgeId : null,
+      variant:     entry.variant || null,
     };
     this.items.push(item);
     this._emit('add', item);

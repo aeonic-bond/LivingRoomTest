@@ -24,7 +24,7 @@ class PulseController {
 
     // Color / opacity config
     this.strokeColor = PULSE_COLOR_DIVIDER;
-    this.fillColor   = new THREE.Color(0xffaacc);
+    this.fillColor   = new THREE.Color(0x88cc88);
     this.plusColor    = PULSE_COLOR_BLACK;
     this.ringOpacity = 0.8;
     this.fillOpacity = 0.1;
@@ -511,7 +511,7 @@ class PulseController {
     this.interval     = 0.4;
     this.pulseNoise   = 0;
     this.pulseStart   = 0.3;
-    this.fillColor    = new THREE.Color(0xffaacc);
+    this.fillColor    = new THREE.Color(0x88cc88);
     this.strokeColor  = PULSE_COLOR_DIVIDER;
     this.fillMat.color = this.fillColor;
     this.ringMat.color = this.strokeColor;

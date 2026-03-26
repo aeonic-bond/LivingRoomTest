@@ -304,17 +304,38 @@ class PlacingMenu {
     if (!data) return;
 
     const config = FURNITURE[typeId];
-    const edge = config.affinity === 'edge'
-      ? this.edges.getNearestEdge(data.x, data.z)
-      : null;
-    const rotation = edge ? this.edges.getRotation(edge) : 0;
+
+    // Use pulse's resolved position as the furniture location
+    const x = this.pulse.centerX;
+    const z = this.pulse.centerZ;
+    const rotation = this.pulse.rotation;
+
+    let edgeId = null;
+    let cornerId = null;
+    let majorEdgeId = null;
+    let minorEdgeId = null;
+
+    if (config.affinity === 'edge') {
+      const edge = this.edges.getNearestEdge(data.x, data.z);
+      edgeId = edge ? edge.id : null;
+    } else if (config.affinity === 'corner') {
+      const result = this.corners.getNearestCorner(data.x, data.z);
+      if (result) {
+        cornerId    = result.corner.id;
+        majorEdgeId = result.majorEdgeId;
+        minorEdgeId = result.minorEdgeId;
+      }
+    }
 
     const item = this.sceneData.add({
-      type:     typeId,
-      x:        data.x,
-      z:        data.z,
-      rotation: rotation,
-      edgeId:   edge ? edge.id : null,
+      type:        typeId,
+      x:           x,
+      z:           z,
+      rotation:    rotation,
+      edgeId:      edgeId,
+      cornerId:    cornerId,
+      majorEdgeId: majorEdgeId,
+      minorEdgeId: minorEdgeId,
     });
 
     this.state.set(STATES.SELECTED, { itemId: item.id });
