@@ -2,7 +2,7 @@
  * CursorController
  *
  * Manages mouse tracking and raycasting.
- * Delegates pulse visuals (including plus) to PulseController.
+ * Delegates pulse visuals to PulseController.
  */
 class CursorController {
   /**
@@ -12,13 +12,12 @@ class CursorController {
    * @param {THREE.OrthographicCamera} camera
    * @param {PulseController} pulse
    */
-  constructor(scene, room, canvas, camera, pulse, sceneData) {
-    this.scene     = scene;
-    this.room      = room;
-    this.canvas    = canvas;
-    this.camera    = camera;
-    this.pulse     = pulse;
-    this.sceneData = sceneData;
+  constructor(scene, room, canvas, camera, pulse) {
+    this.scene  = scene;
+    this.room   = room;
+    this.canvas = canvas;
+    this.camera = camera;
+    this.pulse  = pulse;
 
     // State
     this.enabled  = true;
@@ -58,16 +57,6 @@ class CursorController {
       return;
     }
 
-    // Check if hovering over a placed item
-    const overItem = this._hitTestItems(hit.x, hit.z);
-    if (overItem) {
-      this.canvas.style.cursor = 'grab';
-      if (this.hovering) this._hide();
-      return;
-    }
-
-    this.canvas.style.cursor = '';
-
     // Snap to center of nearest unit
     const ux = Math.floor(hit.x) + 0.5;
     const uz = Math.floor(hit.z) + 0.5;
@@ -83,47 +72,13 @@ class CursorController {
     }
   }
 
-  /**
-   * Simple AABB hit test against placed items.
-   */
-  _hitTestItems(wx, wz) {
-    for (const item of this.sceneData.items) {
-      const config = FURNITURE[item.type];
-      if (!config) continue;
-
-      const fp = config.footprint;
-      if (fp.type === 'L') {
-        // Simplified L bounding box check
-        const h = fp.hinge;
-        const sx = item.sx || 1;
-        const sz = item.sz || 1;
-        const totalW = (h.w + fp.majorThrust) * Math.abs(sx);
-        const totalD = (h.d + fp.minorThrust) * Math.abs(sz);
-        const minX = Math.min(item.x - h.w/2, item.x - h.w/2 + totalW * sx);
-        const maxX = Math.max(item.x - h.w/2, item.x - h.w/2 + totalW * sx);
-        const minZ = Math.min(item.z - h.d/2, item.z - h.d/2 + totalD * sz);
-        const maxZ = Math.max(item.z - h.d/2, item.z - h.d/2 + totalD * sz);
-        if (wx >= minX && wx <= maxX && wz >= minZ && wz <= maxZ) return item;
-      } else {
-        const cosR = Math.abs(Math.cos(item.rotation || 0));
-        const sinR = Math.abs(Math.sin(item.rotation || 0));
-        const extX = (fp.w * cosR + fp.d * sinR) / 2;
-        const extZ = (fp.w * sinR + fp.d * cosR) / 2;
-        if (Math.abs(wx - item.x) <= extX && Math.abs(wz - item.z) <= extZ) return item;
-      }
-    }
-    return null;
-  }
-
   _onMouseLeave() {
     this._hide();
-    this.canvas.style.cursor = '';
   }
 
   _hide() {
     if (!this.hovering) return;
     this.hovering = false;
-    this.canvas.style.cursor = '';
     if (!this.pulse.anchored) {
       this.pulse.stop();
     }
