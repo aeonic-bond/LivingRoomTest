@@ -155,44 +155,71 @@ class PlacingMenu {
 
   _onHover(typeId) {
     const config = FURNITURE[typeId];
-    if (!config || config.affinity !== 'edge') return;
+    if (!config) return;
 
     const data = this.state.data;
     if (!data) return;
 
-    const edge = this.edges.getNearestEdge(data.x, data.z);
-    const rotation = edge ? this.edges.getRotation(edge) : 0;
+    let rotation = 0;
+    if (config.affinity === 'edge') {
+      const edge = this.edges.getNearestEdge(data.x, data.z);
+      rotation = edge ? this.edges.getRotation(edge) : 0;
+    }
+
+    const fp = config.footprint;
+    const buf = config.buffer * 2;
 
     this.pulse.setConfig({
-      pulseW:   config.footprint.w + config.buffer * 2,
-      pulseD:   config.footprint.d + config.buffer * 2,
+      pulseW:   fp.w + buf,
+      pulseD:   fp.d + buf,
       rotation: rotation,
     });
 
-    // Re-adjust origin for the new size and force a pulse
+    // Compute new origin
     const o = this.pulse._adjustOrigin(data.x, data.z);
+
+    // Calculate where plus currently is in world space
+    const oldWorldX = this.pulse.group.position.x + this.pulse.plusGroup.position.x;
+    const oldWorldZ = this.pulse.group.position.z + this.pulse.plusGroup.position.z;
+
+    // Move group to new origin
     this.pulse.centerX = o.x;
     this.pulse.centerZ = o.z;
     this.pulse.group.position.x = o.x;
     this.pulse.group.position.z = o.z;
-    this.pulse.plusGroup.position.x = data.x - o.x;
-    this.pulse.plusGroup.position.z = data.z - o.z;
+
+    // Set plus to its old world position relative to new group position
+    this.pulse.plusGroup.position.x = oldWorldX - o.x;
+    this.pulse.plusGroup.position.z = oldWorldZ - o.z;
+
+    // Animate plus to new center
+    this.pulse.animatePlus(0, 0);
     this.pulse.trigger();
   }
 
   _onHoverEnd() {
     this.pulse.resetConfig();
 
-    // Re-adjust origin back to default size
     const data = this.state.data;
     if (data) {
       const o = this.pulse._adjustOrigin(data.x, data.z);
+
+      // Calculate where plus currently is in world space
+      const oldWorldX = this.pulse.group.position.x + this.pulse.plusGroup.position.x;
+      const oldWorldZ = this.pulse.group.position.z + this.pulse.plusGroup.position.z;
+
+      // Move group to new origin
       this.pulse.centerX = o.x;
       this.pulse.centerZ = o.z;
       this.pulse.group.position.x = o.x;
       this.pulse.group.position.z = o.z;
-      this.pulse.plusGroup.position.x = data.x - o.x;
-      this.pulse.plusGroup.position.z = data.z - o.z;
+
+      // Set plus to its old world position relative to new group position
+      this.pulse.plusGroup.position.x = oldWorldX - o.x;
+      this.pulse.plusGroup.position.z = oldWorldZ - o.z;
+
+      // Animate plus back to click offset
+      this.pulse.animatePlus(data.x - o.x, data.z - o.z);
     }
   }
 

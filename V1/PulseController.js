@@ -45,10 +45,15 @@ class PulseController {
     this.anchored      = false;
     this.centerX       = 0;
     this.centerZ       = 0;
+    this.rawX          = 0;
+    this.rawZ          = 0;
     this.elapsed       = 0;
     this.intervalTimer = 0;
     this.pulsing       = false;
     this.lastTime      = 0;
+
+    // Plus tween (only active during PLACING hover transitions)
+    this._plusTween     = null;  // { startX, startZ, endX, endZ, duration, elapsed }
 
     // Build visuals
     this.group = new THREE.Group();
@@ -261,6 +266,23 @@ class PulseController {
   }
 
   /**
+   * Animate plus from its current position to a target offset within the group.
+   * @param {number} targetX - target x offset relative to group
+   * @param {number} targetZ - target z offset relative to group
+   * @param {number} [duration=0.25] - seconds
+   */
+  animatePlus(targetX, targetZ, duration = 0.25) {
+    this._plusTween = {
+      startX:  this.plusGroup.position.x,
+      startZ:  this.plusGroup.position.z,
+      endX:    targetX,
+      endZ:    targetZ,
+      duration: duration,
+      elapsed: 0,
+    };
+  }
+
+  /**
    * Stop pulsing and hide.
    */
   stop() {
@@ -349,6 +371,17 @@ class PulseController {
         this.pulsing = true;
         this.elapsed = 0;
       }
+    }
+
+    // Plus tween
+    if (this._plusTween) {
+      const tw = this._plusTween;
+      tw.elapsed += dt;
+      const t = Math.min(1, tw.elapsed / tw.duration);
+      const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      this.plusGroup.position.x = tw.startX + (tw.endX - tw.startX) * ease;
+      this.plusGroup.position.z = tw.startZ + (tw.endZ - tw.startZ) * ease;
+      if (t >= 1) this._plusTween = null;
     }
   }
 }
