@@ -73,6 +73,7 @@
 <script src="SceneController.js"></script>
 <script src="RoomConfig.js"></script>
 <script src="FurnitureConfig.js"></script>
+<script src="EdgeAffinity.js"></script>
 <script src="StateController.js"></script>
 <script src="PulseController.js"></script>
 <script src="CursorController.js"></script>
@@ -120,6 +121,7 @@ const cam = new CameraController(camera, container, {
 cam.toDefault();
 
 const sceneCtrl = new SceneController(scene, ROOM, { showGrid: false });
+const edges = new EdgeAffinity(ROOM);
 
 const panels = new PanelController({
   panel:   document.getElementById('dynamicLeftPanel'),

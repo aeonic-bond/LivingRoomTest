@@ -36,7 +36,7 @@ class PulseController {
 
     // State
     this.active        = false;
-    this.anchored      = false;   // true = stays at fixed position, false = follows updates
+    this.anchored      = false;
     this.centerX       = 0;
     this.centerZ       = 0;
     this.elapsed       = 0;
@@ -111,6 +111,12 @@ class PulseController {
     const n = this.ringResolution;
     const half = this.pulseSize / 2;
 
+    // Clamp bounds: pulse box AND room edges (relative to pulse center)
+    const minX = Math.max(-half, -this.centerX);
+    const maxX = Math.min( half,  this.room.width - this.centerX);
+    const minZ = Math.max(-half, -this.centerZ);
+    const maxZ = Math.min( half,  this.room.height - this.centerZ);
+
     const maxNoise = this.pulseNoise;
     const noiseStrength = maxNoise * Math.min(1, radius / (half * 0.7));
 
@@ -128,8 +134,8 @@ class PulseController {
 
       const r = radius * wobble;
 
-      let x = Math.max(-half, Math.min(half, Math.cos(angle) * r));
-      let z = Math.max(-half, Math.min(half, Math.sin(angle) * r));
+      let x = Math.max(minX, Math.min(maxX, Math.cos(angle) * r));
+      let z = Math.max(minZ, Math.min(maxZ, Math.sin(angle) * r));
 
       ringPos[i * 3]     = x;
       ringPos[i * 3 + 1] = 0;
@@ -158,7 +164,7 @@ class PulseController {
     this.active = true;
     this.anchored = false;
     this.lastTime = performance.now();
-    this.intervalTimer = this.interval; // trigger first pulse immediately
+    this.intervalTimer = this.interval;
   }
 
   /**
