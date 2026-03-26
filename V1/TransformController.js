@@ -39,7 +39,7 @@ class TransformController {
     this._onMouseUp   = this._onMouseUp.bind(this);
 
     // Soft bounds config
-    this.softMax = 0.75;          // max overshoot in units (lower = more resistance)
+    this.softMax = 0.5;           // max overshoot in units (lower = more resistance)
     this._bounceAnim = null;      // { item, startX, startZ, endX, endZ, elapsed, duration }
 
     this.canvas.addEventListener('mousedown', this._onMouseDown);
@@ -192,6 +192,9 @@ class TransformController {
       this.didDrag = false;
       this.dragItemId = this._pendingItemId;
       this._pending = false;
+      const dragItem = this.sceneData.get(this.dragItemId);
+      this._lastValidX = dragItem ? dragItem.x : 0;
+      this._lastValidZ = dragItem ? dragItem.z : 0;
       this.state.set(STATES.TRANSFORM);
       this.canvas.style.cursor = 'grabbing';
     }
@@ -208,11 +211,26 @@ class TransformController {
     const rawX = pos.x + this.grabOffsetX;
     const rawZ = pos.z + this.grabOffsetZ;
 
-    // Soft bounds — allows slight overshoot with resistance
-    const x = this.softBounds(rawX, halfW, this.room.width - halfW);
-    const z = this.softBounds(rawZ, halfD, this.room.height - halfD);
+    // Soft bounds for room edges
+    let x = this.softBounds(rawX, halfW, this.room.width - halfW);
+    let z = this.softBounds(rawZ, halfD, this.room.height - halfD);
 
-    this.sceneData.update(item.id, { x, z });
+    // Check collision with other items
+    const overlaps = Collision.findOverlaps(item.type, x, z, item, this.sceneData, item.id);
+
+    if (overlaps.length === 0) {
+      // No collision — update position and store as last valid
+      this._lastValidX = x;
+      this._lastValidZ = z;
+      this.sceneData.update(item.id, { x, z });
+    } else {
+      // Collision — apply soft bounds relative to last valid position
+      const dx = x - this._lastValidX;
+      const dz = z - this._lastValidZ;
+      const softX = this._lastValidX + this.softBounds(dx, -this.softMax, this.softMax);
+      const softZ = this._lastValidZ + this.softBounds(dz, -this.softMax, this.softMax);
+      this.sceneData.update(item.id, { x: softX, z: softZ });
+    }
   }
 
   _onMouseUp() {
@@ -231,22 +249,41 @@ class TransformController {
     this.didDrag = true;
     this.canvas.style.cursor = '';
 
-    // Bounce back if outside valid bounds
+    // Bounce back if outside valid bounds or colliding
     if (item) {
       const config = FURNITURE[item.type];
       const fp = config.footprint;
       const halfW = fp.w / 2;
       const halfD = fp.d / 2;
-      const clampedX = Math.max(halfW, Math.min(this.room.width - halfW, item.x));
-      const clampedZ = Math.max(halfD, Math.min(this.room.height - halfD, item.z));
 
-      if (item.x !== clampedX || item.z !== clampedZ) {
+      // Clamp to room edges
+      let endX = Math.max(halfW, Math.min(this.room.width - halfW, item.x));
+      let endZ = Math.max(halfD, Math.min(this.room.height - halfD, item.z));
+
+      // If still colliding after edge clamp, bounce to last valid position + gap
+      const overlaps = Collision.findOverlaps(item.type, endX, endZ, item, this.sceneData, item.id);
+      if (overlaps.length > 0) {
+        const gap = 0.25;
+        // Direction from colliding object center to dragged item's last valid position
+        const other = overlaps[0];
+        const dx = this._lastValidX - other.x;
+        const dz = this._lastValidZ - other.z;
+        const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+        endX = this._lastValidX + (dx / dist) * gap;
+        endZ = this._lastValidZ + (dz / dist) * gap;
+
+        // Re-clamp to room edges
+        endX = Math.max(halfW, Math.min(this.room.width - halfW, endX));
+        endZ = Math.max(halfD, Math.min(this.room.height - halfD, endZ));
+      }
+
+      if (item.x !== endX || item.z !== endZ) {
         this._bounceAnim = {
           itemId:   item.id,
           startX:   item.x,
           startZ:   item.z,
-          endX:     clampedX,
-          endZ:     clampedZ,
+          endX:     endX,
+          endZ:     endZ,
           elapsed:  0,
           duration: 0.2,
         };
