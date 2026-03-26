@@ -121,20 +121,51 @@ class SceneController {
     const config = FURNITURE[item.type];
     if (!config) return;
 
-    const m = config.mesh;
     const mat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5 });
-    const geo = new THREE.BoxGeometry(m.w, m.h, m.d);
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-
     const group = new THREE.Group();
-    mesh.position.y = m.h / 2;
-    group.add(mesh);
+    const fp = config.footprint;
+
+    if (fp.type === 'L') {
+      // L-shape: build two arm boxes in canonical orientation, centered on hinge
+      const h = fp.hinge;
+      const mh = config.mesh.h;
+      // Offset so hinge center is at group origin
+      const offX = -h.w / 2;
+      const offZ = -h.d / 2;
+
+      // Major arm: hinge + thrust along +x
+      const majorW = h.w + fp.majorThrust;
+      const majorGeo = new THREE.BoxGeometry(majorW, mh, h.d);
+      const majorMesh = new THREE.Mesh(majorGeo, mat);
+      majorMesh.position.set(offX + majorW / 2, mh / 2, offZ + h.d / 2);
+      majorMesh.castShadow = true;
+      majorMesh.receiveShadow = true;
+      group.add(majorMesh);
+
+      // Minor arm: thrust along +z (no hinge overlap)
+      const minorD = fp.minorThrust;
+      const minorGeo = new THREE.BoxGeometry(h.w, mh, minorD);
+      const minorMesh = new THREE.Mesh(minorGeo, mat);
+      minorMesh.position.set(offX + h.w / 2, mh / 2, offZ + h.d + minorD / 2);
+      minorMesh.castShadow = true;
+      minorMesh.receiveShadow = true;
+      group.add(minorMesh);
+
+      // Mirror to match corner orientation
+      group.scale.set(item.sx, 1, item.sz);
+    } else {
+      // Rect: single box centered at origin
+      const m = config.mesh;
+      const geo = new THREE.BoxGeometry(m.w, m.h, m.d);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.y = m.h / 2;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      group.rotation.y = item.rotation || 0;
+    }
 
     group.position.set(item.x, 0, item.z);
-    group.rotation.y = item.rotation || 0;
-
     this.scene.add(group);
     this.meshes[item.id] = group;
   }

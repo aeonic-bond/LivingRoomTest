@@ -24,8 +24,8 @@ const FURNITURE = {
     footprint: {
       type: 'L',
       hinge: { w: 3, d: 3 },       // corner block where arms meet
-      majorThrust: 5,               // extends beyond hinge along major edge
-      minorThrust: 5,               // extends beyond hinge along minor edge
+      majorThrust: 6,               // extends beyond hinge along major edge
+      minorThrust: 4,               // extends beyond hinge along minor edge
     },
     mesh: { type: 'box', w: 8, h: 0.35, d: 8 },  // placeholder until L-shape mesh
   },

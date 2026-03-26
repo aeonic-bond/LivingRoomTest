@@ -314,6 +314,7 @@ class PlacingMenu {
     let cornerId = null;
     let majorEdgeId = null;
     let minorEdgeId = null;
+    let sx = 1, sz = 1;
 
     if (config.affinity === 'edge') {
       const edge = this.edges.getNearestEdge(data.x, data.z);
@@ -324,6 +325,8 @@ class PlacingMenu {
         cornerId    = result.corner.id;
         majorEdgeId = result.majorEdgeId;
         minorEdgeId = result.minorEdgeId;
+        sx = result.corner.normal.x > 0 ? 1 : -1;
+        sz = result.corner.normal.z > 0 ? 1 : -1;
       }
     }
 
@@ -336,6 +339,8 @@ class PlacingMenu {
       cornerId:    cornerId,
       majorEdgeId: majorEdgeId,
       minorEdgeId: minorEdgeId,
+      sx:          sx,
+      sz:          sz,
     });
 
     this.state.set(STATES.SELECTED, { itemId: item.id });
