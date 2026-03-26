@@ -4,6 +4,7 @@ function pulseCssColor(varName) {
   return new THREE.Color(hex);
 }
 const PULSE_COLOR_DIVIDER = pulseCssColor('--color-divider-gray-base');
+const PULSE_COLOR_BLACK   = pulseCssColor('--color-black-base');
 
 /**
  * PulseController
@@ -24,8 +25,10 @@ class PulseController {
     // Color / opacity config
     this.strokeColor = PULSE_COLOR_DIVIDER;
     this.fillColor   = new THREE.Color(0xffaacc);
+    this.plusColor    = PULSE_COLOR_BLACK;
     this.ringOpacity = 0.8;
     this.fillOpacity = 0.1;
+    this.plusOpacity  = 0.8;
 
     // Pulse config
     this.pulseSize   = 3;       // default square size (used when pulseW/pulseD are null)
@@ -88,6 +91,21 @@ class PulseController {
     this.fill = new THREE.Mesh(this.fillGeo, this.fillMat);
     this.fill.position.y = 0.003;
     this.group.add(this.fill);
+
+    // Plus symbol
+    const plusSize = 0.25;
+    this.plusMat = new THREE.LineBasicMaterial({
+      color: this.plusColor,
+      transparent: true,
+      opacity: this.plusOpacity,
+    });
+    const hPts = [new THREE.Vector3(-plusSize, 0, 0), new THREE.Vector3(plusSize, 0, 0)];
+    const vPts = [new THREE.Vector3(0, 0, -plusSize), new THREE.Vector3(0, 0, plusSize)];
+    this.plusGroup = new THREE.Group();
+    this.plusGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(hPts), this.plusMat));
+    this.plusGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(vPts), this.plusMat));
+    this.plusGroup.position.y = 0.006;
+    this.group.add(this.plusGroup);
   }
 
   // ── Noise ────────────────────────────────────────────────
@@ -191,11 +209,15 @@ class PulseController {
    * Start pulsing at a position. Follows future setPosition calls.
    */
   start(x, z) {
+    this.rawX = x;
+    this.rawZ = z;
     const o = this._adjustOrigin(x, z);
     this.centerX = o.x;
     this.centerZ = o.z;
     this.group.position.x = o.x;
     this.group.position.z = o.z;
+    this.plusGroup.position.x = x - o.x;
+    this.plusGroup.position.z = z - o.z;
     this.group.visible = true;
     this.active = true;
     this.anchored = false;
@@ -216,11 +238,15 @@ class PulseController {
    */
   setPosition(x, z) {
     if (this.anchored) return;
+    this.rawX = x;
+    this.rawZ = z;
     const o = this._adjustOrigin(x, z);
     this.centerX = o.x;
     this.centerZ = o.z;
     this.group.position.x = o.x;
     this.group.position.z = o.z;
+    this.plusGroup.position.x = x - o.x;
+    this.plusGroup.position.z = z - o.z;
   }
 
   /**
@@ -313,7 +339,8 @@ class PulseController {
 
       if (progress >= 1) {
         this.pulsing = false;
-        this.group.visible = false;
+        this.ringMat.opacity = 0;
+        this.fillMat.opacity = 0;
         this.intervalTimer = 0;
       }
     } else {
@@ -321,7 +348,6 @@ class PulseController {
       if (this.intervalTimer >= this.interval) {
         this.pulsing = true;
         this.elapsed = 0;
-        this.group.visible = true;
       }
     }
   }

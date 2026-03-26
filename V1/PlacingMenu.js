@@ -175,6 +175,8 @@ class PlacingMenu {
     this.pulse.centerZ = o.z;
     this.pulse.group.position.x = o.x;
     this.pulse.group.position.z = o.z;
+    this.pulse.plusGroup.position.x = data.x - o.x;
+    this.pulse.plusGroup.position.z = data.z - o.z;
     this.pulse.trigger();
   }
 
@@ -189,6 +191,8 @@ class PlacingMenu {
       this.pulse.centerZ = o.z;
       this.pulse.group.position.x = o.x;
       this.pulse.group.position.z = o.z;
+      this.pulse.plusGroup.position.x = data.x - o.x;
+      this.pulse.plusGroup.position.z = data.z - o.z;
     }
   }
 
