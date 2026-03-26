@@ -63,7 +63,7 @@
   <div class="panel-handle" id="panelHandle"></div>
   <div class="scene-container" id="sceneContainer">
     <canvas id="canvas"></canvas>
-    <div class="room-label" id="roomLabel">Rectangle Room: 12ft x 16ft</div>
+    <div class="room-label" id="roomLabel"></div>
   </div>
 </div>
 
@@ -71,6 +71,8 @@
 <script src="CameraController.js"></script>
 <script src="PanelController.js"></script>
 <script src="SceneController.js"></script>
+<script src="RoomConfig.js"></script>
+<script src="FurnitureConfig.js"></script>
 <script src="StateController.js"></script>
 <script src="PulseController.js"></script>
 <script src="CursorController.js"></script>
@@ -79,13 +81,8 @@
 // ══════════════════════════════════════════════════════════════
 //  CONFIG
 // ══════════════════════════════════════════════════════════════
-const ROOM = {
-  panelCols: 3,
-  panelRows: 4,
-  unitsPerPanel: 4,
-  get width()  { return this.panelCols * this.unitsPerPanel; },
-  get height() { return this.panelRows * this.unitsPerPanel; },
-};
+const ROOM = ROOMS.rectangleDefault;
+document.getElementById('roomLabel').textContent = ROOM.label;
 
 // ══════════════════════════════════════════════════════════════
 //  THREE.JS SETUP

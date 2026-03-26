@@ -2,17 +2,9 @@
  * PlacingMenu
  *
  * Context menu for choosing a furniture type to place.
+ * Derives items from FurnitureConfig.js.
  * Listens to StateController for enter:placing / exit:placing.
  */
-
-const FURNITURE_TYPES = [
-  { id: 'couch',        label: 'Couch' },
-  { id: 'sectional',    label: 'Sectional' },
-  { id: 'chair',        label: 'Chair' },
-  { id: 'chairPair',    label: 'Pair of Chairs' },
-  { id: 'coffeeTable',  label: 'Coffee Table' },
-  { id: 'mediaConsole', label: 'Media Console' },
-];
 
 class PlacingMenu {
   /**
@@ -36,7 +28,8 @@ class PlacingMenu {
     this.el.className = 'placing-menu';
     this.el.style.display = 'none';
 
-    FURNITURE_TYPES.forEach(type => {
+    FURNITURE_ORDER.forEach(id => {
+      const type = FURNITURE[id];
       const row = document.createElement('div');
       row.className = 'placing-menu-item';
 
