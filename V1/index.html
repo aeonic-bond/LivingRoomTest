@@ -185,6 +185,8 @@ state.on('enter:default', () => {
 });
 
 canvas.addEventListener('click', (e) => {
+  if (transform.didDrag) { transform.didDrag = false; return; }
+
   if (state.is(STATES.DEFAULT)) {
     const rect = canvas.getBoundingClientRect();
     const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;

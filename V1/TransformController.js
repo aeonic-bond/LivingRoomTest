@@ -24,6 +24,7 @@ class TransformController {
 
     // Drag state
     this.dragging    = false;
+    this.didDrag     = false;
     this.dragItemId  = null;
     this.grabOffsetX = 0;
     this.grabOffsetZ = 0;
@@ -203,6 +204,7 @@ class TransformController {
 
     const item = this.sceneData.get(this.dragItemId);
     this.dragging = false;
+    this.didDrag = true;
     this.canvas.style.cursor = '';
 
     // Bounce back if outside valid bounds
