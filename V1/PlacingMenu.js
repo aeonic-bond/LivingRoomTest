@@ -186,16 +186,16 @@ class PlacingMenu {
 
       // Major arm: starts flush at hinge edge, extends thrust + buffer outward
       const majorBlock = {
-        x: majorDir.x > 0 ? hx1 : majorDir.x < 0 ? -(fp.majorThrust + buf) : hx0,
-        z: majorDir.z > 0 ? hz1 : majorDir.z < 0 ? -(fp.majorThrust + buf) : hz0,
+        x: majorDir.x > 0 ? hx1 : majorDir.x < 0 ? hx0 - (fp.majorThrust + buf) : hx0,
+        z: majorDir.z > 0 ? hz1 : majorDir.z < 0 ? hz0 - (fp.majorThrust + buf) : hz0,
         w: Math.abs(majorDir.x) > 0 ? fp.majorThrust + buf : hx1 - hx0,
         d: Math.abs(majorDir.z) > 0 ? fp.majorThrust + buf : hz1 - hz0,
       };
 
       // Minor arm: starts flush at hinge edge, extends thrust + buffer outward
       const minorBlock = {
-        x: minorDir.x > 0 ? hx1 : minorDir.x < 0 ? -(fp.minorThrust + buf) : hx0,
-        z: minorDir.z > 0 ? hz1 : minorDir.z < 0 ? -(fp.minorThrust + buf) : hz0,
+        x: minorDir.x > 0 ? hx1 : minorDir.x < 0 ? hx0 - (fp.minorThrust + buf) : hx0,
+        z: minorDir.z > 0 ? hz1 : minorDir.z < 0 ? hz0 - (fp.minorThrust + buf) : hz0,
         w: Math.abs(minorDir.x) > 0 ? fp.minorThrust + buf : hx1 - hx0,
         d: Math.abs(minorDir.z) > 0 ? fp.minorThrust + buf : hz1 - hz0,
       };

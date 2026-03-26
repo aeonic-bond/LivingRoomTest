@@ -231,29 +231,52 @@ class PulseController {
     this.lHingeFill.position.set((hx0 + hx1) / 2, 0, (hz0 + hz1) / 2);
     setOutline(this.lHingeOutlineGeo, hx0, hz0, hx1, hz1);
 
-    // Helper: update arm — grows only in thrust direction, full width from start
+    // Helper: update arm — grows from hinge edge outward
     const updateArm = (block, fillMesh, outlineGeo) => {
       const bx0 = block.x - hx;
       const bz0 = block.z - hz;
       const bx1 = bx0 + block.w;
       const bz1 = bz0 + block.d;
 
-      // Determine thrust axis: whichever dimension is larger is the thrust
-      const isHorizontal = block.w > block.d;
+      // Find which edge is the hinge-facing edge by checking adjacency
+      // The hinge-facing edge is the one closest to the hinge center (0,0)
+      const distLeft  = Math.abs(bx0);
+      const distRight = Math.abs(bx1);
+      const distTop   = Math.abs(bz0);
+      const distBot   = Math.abs(bz1);
+
+      // Thrust axis: the axis where the block extends further from hinge
+      const xRange = Math.max(distLeft, distRight);
+      const zRange = Math.max(distTop, distBot);
+      const thrustX = xRange > zRange;
 
       let ax0, az0, ax1, az1;
-      if (isHorizontal) {
-        // Thrust along x, full depth from start
-        ax0 = bx0;
-        ax1 = bx0 + block.w * progress;
+      if (thrustX) {
+        // Thrust along x — full depth, grow x from hinge edge outward
         az0 = bz0;
         az1 = bz1;
+        if (distLeft < distRight) {
+          // Hinge is on left, grow rightward
+          ax0 = bx0;
+          ax1 = bx0 + block.w * progress;
+        } else {
+          // Hinge is on right, grow leftward
+          ax1 = bx1;
+          ax0 = bx1 - block.w * progress;
+        }
       } else {
-        // Thrust along z, full width from start
+        // Thrust along z — full width, grow z from hinge edge outward
         ax0 = bx0;
         ax1 = bx1;
-        az0 = bz0;
-        az1 = bz0 + block.d * progress;
+        if (distTop < distBot) {
+          // Hinge is on top, grow downward
+          az0 = bz0;
+          az1 = bz0 + block.d * progress;
+        } else {
+          // Hinge is on bottom, grow upward
+          az1 = bz1;
+          az0 = bz1 - block.d * progress;
+        }
       }
 
       const w = Math.max(0.001, ax1 - ax0);
