@@ -196,6 +196,7 @@ class PulseController {
     this.centerZ = o.z;
     this.group.position.x = o.x;
     this.group.position.z = o.z;
+    this.group.visible = true;
     this.active = true;
     this.anchored = false;
     this.lastTime = performance.now();
@@ -223,6 +224,17 @@ class PulseController {
   }
 
   /**
+   * Force-trigger a pulse immediately, interrupting any current cycle.
+   */
+  trigger() {
+    if (!this.active) return;
+    this.pulsing = true;
+    this.elapsed = 0;
+    this.group.visible = true;
+    this.lastTime = performance.now();
+  }
+
+  /**
    * Stop pulsing and hide.
    */
   stop() {
@@ -230,6 +242,7 @@ class PulseController {
     this.pulsing = false;
     this.anchored = false;
     this.intervalTimer = 0;
+    this.group.visible = false;
     this.group.visible = false;
   }
 
