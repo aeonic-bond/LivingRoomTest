@@ -103,6 +103,41 @@ class SceneController {
     this.gridGroup.visible = visible;
   }
 
+  // ── Selection outline ──────────────────────────────────
+
+  selectItem(itemId) {
+    this.deselectItem();
+    this._selectedId = itemId;
+    const group = this.meshes[itemId];
+    if (!group) return;
+
+    group.traverse((child) => {
+      if (child.isMesh) {
+        const edges = new THREE.EdgesGeometry(child.geometry);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
+          color: 0x378ADD,
+          linewidth: 1,
+        }));
+        line.name = '_selectionOutline';
+        child.add(line);
+      }
+    });
+  }
+
+  deselectItem() {
+    if (this._selectedId == null) return;
+    const group = this.meshes[this._selectedId];
+    if (group) {
+      group.traverse((child) => {
+        if (child.isMesh) {
+          const outline = child.getObjectByName('_selectionOutline');
+          if (outline) child.remove(outline);
+        }
+      });
+    }
+    this._selectedId = null;
+  }
+
   // ── Furniture rendering ─────────────────────────────────
 
   /**

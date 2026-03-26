@@ -43,8 +43,8 @@ class TransformController {
     this._bounceAnim = null;      // { item, startX, startZ, endX, endZ, elapsed, duration }
 
     this.canvas.addEventListener('mousedown', this._onMouseDown);
-    this.canvas.addEventListener('mousemove', this._onMouseMove);
-    this.canvas.addEventListener('mouseup', this._onMouseUp);
+    document.addEventListener('mousemove', this._onMouseMove);
+    document.addEventListener('mouseup', this._onMouseUp);
   }
 
   /**
@@ -154,7 +154,7 @@ class TransformController {
 
   _onMouseDown(e) {
     if (e.button !== 0) return;
-    if (!this.state.is(STATES.DEFAULT)) return;
+    if (!this.state.is(STATES.DEFAULT) && !this.state.is(STATES.SELECTED)) return;
 
     const pos = this._getWorldPos(e);
     if (!pos) return;
@@ -162,23 +162,39 @@ class TransformController {
     const item = this._hitTest(pos.x, pos.z);
     if (!item) return;
 
-    // Only drag no-affinity items for now
+    // Only interact with no-affinity items for now
     const config = FURNITURE[item.type];
     if (config.affinity !== 'none') return;
 
-    this.dragging = true;
-    this.dragItemId = item.id;
+    // Start pending drag — don't enter TRANSFORM until mouse moves
+    this._pending = true;
+    this._pendingItemId = item.id;
+    this._pendingStartX = pos.x;
+    this._pendingStartZ = pos.z;
     this.grabOffsetX = item.x - pos.x;
     this.grabOffsetZ = item.z - pos.z;
-    this.state.set(STATES.TRANSFORM);
-    this.canvas.style.cursor = 'grabbing';
+    this._prevState = this.state.current;
   }
 
   _onMouseMove(e) {
-    if (!this.dragging) return;
+    if (!this.dragging && !this._pending) return;
 
     const pos = this._getWorldPos(e);
     if (!pos) return;
+
+    // Promote pending to dragging after movement threshold
+    if (this._pending && !this.dragging) {
+      const dx = pos.x - this._pendingStartX;
+      const dz = pos.z - this._pendingStartZ;
+      if (dx * dx + dz * dz < 0.1 * 0.1) return; // threshold: 0.1 units
+
+      this.dragging = true;
+      this.didDrag = false;
+      this.dragItemId = this._pendingItemId;
+      this._pending = false;
+      this.state.set(STATES.TRANSFORM);
+      this.canvas.style.cursor = 'grabbing';
+    }
 
     const item = this.sceneData.get(this.dragItemId);
     if (!item) return;
@@ -200,6 +216,14 @@ class TransformController {
   }
 
   _onMouseUp() {
+    // Click (no drag) — select the item
+    if (this._pending && !this.dragging) {
+      this._pending = false;
+      this.didDrag = true; // prevent click handler from firing
+      this.state.set(STATES.SELECTED, { itemId: this._pendingItemId });
+      return;
+    }
+
     if (!this.dragging) return;
 
     const item = this.sceneData.get(this.dragItemId);
@@ -232,7 +256,7 @@ class TransformController {
     this.dragItemId = null;
 
     if (this.state.is(STATES.TRANSFORM)) {
-      this.state.set(STATES.DEFAULT);
+      this.state.set(this._prevState || STATES.DEFAULT);
     }
   }
 

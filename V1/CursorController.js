@@ -19,6 +19,9 @@ class CursorController {
     this.camera = camera;
     this.pulse  = pulse;
 
+    // Optional reference to TransformController for hit testing
+    this.transform = null;
+
     // State
     this.enabled  = true;
     this.hovering = false;
@@ -57,6 +60,21 @@ class CursorController {
       return;
     }
 
+    // Check if hovering over a draggable item
+    if (this.transform && !this.transform.dragging) {
+      const hitItem = this.transform._hitTest(hit.x, hit.z);
+      if (hitItem) {
+        const config = FURNITURE[hitItem.type];
+        if (config && config.affinity === 'none') {
+          this._setCursor('grab');
+          if (this.hovering) this._hide();
+          return;
+        }
+      }
+    }
+
+    this._setCursor('');
+
     // Snap to center of nearest unit
     const ux = Math.floor(hit.x) + 0.5;
     const uz = Math.floor(hit.z) + 0.5;
@@ -74,6 +92,7 @@ class CursorController {
 
   _onMouseLeave() {
     this._hide();
+    this._setCursor('');
   }
 
   _hide() {
@@ -82,6 +101,19 @@ class CursorController {
     if (!this.pulse.anchored) {
       this.pulse.stop();
     }
+  }
+
+  /**
+   * Set cursor style (skipped during active drag).
+   */
+  _setCursor(style) {
+    if (this.transform && this.transform.dragging) return;
+    this.canvas.style.cursor = style;
+  }
+
+  /** Wire up TransformController after both are created. */
+  setTransform(transform) {
+    this.transform = transform;
   }
 
   disable() {

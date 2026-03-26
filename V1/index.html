@@ -161,6 +161,7 @@ const state  = new StateController();
 const sceneData = new SceneData();
 sceneCtrl.bindData(sceneData);
 const transform = new TransformController(canvas, camera, ROOM, sceneData, sceneCtrl, state);
+cursor.setTransform(transform);
 const placingMenu = new PlacingMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM, corners);
 
 // ── State wiring ─────────────────────────────────────────────
@@ -170,8 +171,9 @@ state.on('enter:placing', (data) => {
 });
 
 state.on('enter:selected', (data) => {
-  cursor.disable();
+  cursor.enable();
   pulse.stop();
+  if (data && data.itemId != null) sceneCtrl.selectItem(data.itemId);
 });
 
 state.on('enter:transform', () => {
@@ -182,6 +184,7 @@ state.on('enter:transform', () => {
 state.on('enter:default', () => {
   cursor.enable();
   pulse.resetConfig();
+  sceneCtrl.deselectItem();
 });
 
 canvas.addEventListener('click', (e) => {
