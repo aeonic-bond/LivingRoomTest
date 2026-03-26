@@ -102,6 +102,7 @@
 <script src="PulseController.js"></script>
 <script src="CursorController.js"></script>
 <script src="PlacingMenu.js"></script>
+<script src="TransformController.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════
 //  CONFIG
@@ -159,6 +160,7 @@ const cursor = new CursorController(scene, ROOM, canvas, camera, pulse);
 const state  = new StateController();
 const sceneData = new SceneData();
 sceneCtrl.bindData(sceneData);
+const transform = new TransformController(canvas, camera, ROOM, sceneData, sceneCtrl, state);
 const placingMenu = new PlacingMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM, corners);
 
 // ── State wiring ─────────────────────────────────────────────
@@ -168,6 +170,11 @@ state.on('enter:placing', (data) => {
 });
 
 state.on('enter:selected', (data) => {
+  cursor.disable();
+  pulse.stop();
+});
+
+state.on('enter:transform', () => {
   cursor.disable();
   pulse.stop();
 });
@@ -234,9 +241,14 @@ function positionUndo() {
 window.addEventListener('resize', () => { resize(); positionUndo(); });
 positionUndo();
 
+let lastFrameTime = performance.now();
 (function animate() {
   requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = (now - lastFrameTime) / 1000;
+  lastFrameTime = now;
   pulse.update();
+  transform.update(dt);
   renderer.render(scene, camera);
 })();
 </script>
