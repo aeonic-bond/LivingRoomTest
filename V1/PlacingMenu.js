@@ -97,6 +97,9 @@ class PlacingMenu {
     const mw = 220; // menu width
 
     // Reset
+    // Cancel any pending hide
+    if (this._hideTimeout) { clearTimeout(this._hideTimeout); this._hideTimeout = null; }
+
     this.el.classList.remove('from-left', 'from-right', 'hidden');
     this.el.style.removeProperty('left');
     this.el.style.removeProperty('right');
@@ -146,13 +149,15 @@ class PlacingMenu {
   }
 
   hide() {
+    // Cancel any pending hide timeout
+    if (this._hideTimeout) clearTimeout(this._hideTimeout);
+
     this.el.classList.add('hidden');
-    // Hide display after transition
-    const onEnd = () => {
+    // Use timeout as fallback in case transitionend doesn't fire
+    this._hideTimeout = setTimeout(() => {
       this.el.style.display = 'none';
-      this.el.removeEventListener('transitionend', onEnd);
-    };
-    this.el.addEventListener('transitionend', onEnd);
+      this._hideTimeout = null;
+    }, 350); // slightly longer than the CSS transition (300ms)
   }
 
   _onHover(typeId) {
