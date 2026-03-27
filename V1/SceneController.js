@@ -31,9 +31,9 @@ class SceneController {
   }
 
   _buildLighting() {
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.85));
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.35);
     dirLight.position.set(10, 20, 8);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.set(2048, 2048);
@@ -41,6 +41,7 @@ class SceneController {
     dirLight.shadow.camera.right  =  20;
     dirLight.shadow.camera.top    =  20;
     dirLight.shadow.camera.bottom = -20;
+    dirLight.shadow.radius = 12;
     this.scene.add(dirLight);
 
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.25);
@@ -166,30 +167,43 @@ class SceneController {
     const group = this.meshes[itemId];
     if (!group) return;
 
-    group.traverse((child) => {
-      if (child.isMesh) {
-        const edges = new THREE.EdgesGeometry(child.geometry);
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
-          color: 0x378ADD,
-          linewidth: 1,
-        }));
-        line.name = '_selectionOutline';
-        child.add(line);
-      }
-    });
+    const item = this.sceneData.get(itemId);
+    if (!item) return;
+    const config = FURNITURE[item.type];
+    if (!config) return;
+    const fp = config.footprint;
 
+    // Halo: padded outline matching footprint shape
+    const pad = 0.3;
+    const r = 0.25;
+    let shape;
+
+    if (fp.type === 'L') {
+      shape = MeshFactory.lShapeHaloShape(fp, pad, r);
+    } else {
+      shape = MeshFactory.roundedRectHaloShape(fp.w + pad * 2, fp.d + pad * 2, r);
+    }
+
+    const geo = new THREE.ShapeGeometry(shape);
+    geo.rotateX(-Math.PI / 2);
+
+    const halo = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: 0x378ADD,
+      transparent: true,
+      opacity: 0.05,
+      depthWrite: false,
+    }));
+    halo.position.y = 0.002;
+    halo.name = '_selectionHalo';
+    group.add(halo);
   }
 
   deselectItem() {
     if (this._selectedId == null) return;
     const group = this.meshes[this._selectedId];
     if (group) {
-      group.traverse((child) => {
-        if (child.isMesh) {
-          const outline = child.getObjectByName('_selectionOutline');
-          if (outline) child.remove(outline);
-        }
-      });
+      const halo = group.getObjectByName('_selectionHalo');
+      if (halo) group.remove(halo);
     }
     this._selectedId = null;
   }
@@ -212,51 +226,7 @@ class SceneController {
     const config = FURNITURE[item.type];
     if (!config) return;
 
-    const mat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5 });
-    const group = new THREE.Group();
-    const fp = config.footprint;
-
-    if (fp.type === 'L') {
-      // L-shape: build two arm boxes in canonical orientation, centered on hinge
-      const h = fp.hinge;
-      const mh = config.mesh.h;
-      // Offset so hinge center is at group origin
-      const offX = -h.w / 2;
-      const offZ = -h.d / 2;
-
-      // Major arm: hinge + thrust along +x
-      const majorW = h.w + fp.majorThrust;
-      const majorGeo = new THREE.BoxGeometry(majorW, mh, h.d);
-      const majorMesh = new THREE.Mesh(majorGeo, mat);
-      majorMesh.position.set(offX + majorW / 2, mh / 2, offZ + h.d / 2);
-      majorMesh.castShadow = true;
-      majorMesh.receiveShadow = true;
-      group.add(majorMesh);
-
-      // Minor arm: thrust along +z (no hinge overlap)
-      const minorD = fp.minorThrust;
-      const minorGeo = new THREE.BoxGeometry(h.w, mh, minorD);
-      const minorMesh = new THREE.Mesh(minorGeo, mat);
-      minorMesh.position.set(offX + h.w / 2, mh / 2, offZ + h.d + minorD / 2);
-      minorMesh.castShadow = true;
-      minorMesh.receiveShadow = true;
-      group.add(minorMesh);
-
-      // Mirror to match corner orientation
-      group.scale.set(item.sx, 1, item.sz);
-    } else {
-      // Rect: single box centered at origin
-      const m = config.mesh;
-      const geo = new THREE.BoxGeometry(m.w, m.h, m.d);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.y = m.h / 2;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      group.add(mesh);
-      group.rotation.y = item.rotation || 0;
-    }
-
-    group.position.set(item.x, 0, item.z);
+    const group = MeshFactory.build(config, item);
     this.scene.add(group);
     this.meshes[item.id] = group;
   }

@@ -46,6 +46,7 @@ class TransformController {
     // Overshoot config
     this.overshootMax = 2;        // max visual overshoot (dampened)
     this.reorientThreshold = 1.5; // raw overshoot past bounds to trigger reorient
+    this.overshootClamp = 2.0;    // hard limit on raw overshoot distance
     this._bounceAnim = null;
 
     this.canvas.addEventListener('mousedown', this._onMouseDown);
@@ -66,12 +67,13 @@ class TransformController {
     }
 
     const limit = this.overshootMax;
+    const clamp = this.overshootClamp;
     if (value < min) {
-      const raw = min - value;
+      const raw = Math.min(min - value, clamp);
       const damped = limit * (1 - 1 / (1 + raw / limit));
       return { value: min - damped, rawOver: raw, direction: -1 };
     } else {
-      const raw = value - max;
+      const raw = Math.min(value - max, clamp);
       const damped = limit * (1 - 1 / (1 + raw / limit));
       return { value: max + damped, rawOver: raw, direction: 1 };
     }

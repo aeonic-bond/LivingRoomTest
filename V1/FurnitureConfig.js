@@ -14,7 +14,7 @@ const FURNITURE = {
     affinity: 'edge',
     buffer: 1,
     footprint: { w: 7, d: 3 },
-    mesh: { type: 'box', w: 7, h: 0.35, d: 3 },
+    mesh: { type: 'couch' },
     slots: [
       { id: 'left-0',  side: 'left',  along: 0.5 },
       { id: 'right-0', side: 'right', along: 0.5 },
@@ -32,9 +32,12 @@ const FURNITURE = {
       majorThrust: 6,               // extends beyond hinge along major edge
       minorThrust: 4,               // extends beyond hinge along minor edge
     },
-    mesh: { type: 'L', h: 0.35 },  // L-shape built from footprint; only h needed
-    // slots: TODO — L-shape slot support
-    // allowedChildren: ['sideTable', 'floorLamp'],
+    mesh: { type: 'sectional' },
+    slots: [
+      { id: 'left-0',  side: 'left',  along: 0.5 },
+      { id: 'right-0', side: 'right', along: 0.5 },
+    ],
+    allowedChildren: ['sideTable', 'floorLamp'],
   },
   chair: {
     id: 'chair',

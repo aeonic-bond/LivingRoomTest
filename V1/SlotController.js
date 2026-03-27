@@ -19,7 +19,7 @@ class SlotController {
 
     this._slots    = null;  // Map: slotId → { mesh, state }
     this._parentId = null;
-    this._slotSize = 1.5;
+    this._slotSize = 0.8;
     this._animSpeed = 0.03;
 
     // React to child add/remove
@@ -49,26 +49,20 @@ class SlotController {
     const fp = config.footprint;
 
     config.slots.forEach(slot => {
-      // Slot local dimensions: slotSize along offset axis, parent depth along edge
-      // Rotate to world space using same AABB math as everything else
-      const localW = size;    // narrow: along offset direction (local x for left/right)
-      const localD = fp.d;    // long: along parent depth (local z for left/right)
-      const cosR = Math.abs(Math.cos(item.rotation || 0));
-      const sinR = Math.abs(Math.sin(item.rotation || 0));
-      const worldW = localW * cosR + localD * sinR;
-      const worldD = localW * sinR + localD * cosR;
+      // Circle indicator: rotation-invariant, same size in all directions
+      const half = size / 2;
       const pos = getSlotWorldPosition(item, slot, null, size);
       const filled = !!this.sceneData.getChildInSlot(parentId, slot.id);
-      const blocked = filled || this._isBlocked(pos, worldW / 2, worldD / 2, parentId);
+      const blocked = filled || this._isBlocked(pos, half, half, parentId);
 
-      const mesh = this._buildSlotMesh(worldW, worldD);
+      const mesh = this._buildSlotMesh(size);
       mesh.position.set(item.x, 0.003, item.z);
       mesh.userData.slotId   = slot.id;
       mesh.userData.parentId = parentId;
       mesh.userData.targetX  = pos.x;
       mesh.userData.targetZ  = pos.z;
-      mesh.userData.halfW    = worldW / 2;
-      mesh.userData.halfD    = worldD / 2;
+      mesh.userData.halfW    = half;
+      mesh.userData.halfD    = half;
 
       // Animation state
       mesh.userData.slideT   = 0;
@@ -250,14 +244,12 @@ class SlotController {
     this._slots = null;
   }
 
-  _buildSlotMesh(w, d) {
+  _buildSlotMesh(diameter) {
     const group = new THREE.Group();
+    const radius = diameter / 2;
 
-    const halfW = w / 2;
-    const halfD = d / 2;
-
-    // Green fill
-    const fillGeo = new THREE.PlaneGeometry(w, d);
+    // Green fill circle
+    const fillGeo = new THREE.CircleGeometry(radius, 32);
     const fillMat = new THREE.MeshBasicMaterial({
       color: 0x88cc88,
       transparent: true,
@@ -268,20 +260,29 @@ class SlotController {
     fillMesh.rotation.x = -Math.PI / 2;
     group.add(fillMesh);
 
-    // Border rect
-    const borderPts = [
-      new THREE.Vector3(-halfW, 0.001, -halfD),
-      new THREE.Vector3( halfW, 0.001, -halfD),
-      new THREE.Vector3( halfW, 0.001,  halfD),
-      new THREE.Vector3(-halfW, 0.001,  halfD),
-      new THREE.Vector3(-halfW, 0.001, -halfD),
-    ];
-    const borderGeo = new THREE.BufferGeometry().setFromPoints(borderPts);
-    const borderMat = new THREE.LineBasicMaterial({ color: 0x88cc88 });
-    group.add(new THREE.Line(borderGeo, borderMat));
+    // Dashed circle border
+    const segments = 64;
+    const circlePts = [];
+    for (let i = 0; i <= segments; i++) {
+      const theta = (i / segments) * Math.PI * 2;
+      circlePts.push(new THREE.Vector3(
+        Math.cos(theta) * radius,
+        0.001,
+        Math.sin(theta) * radius
+      ));
+    }
+    const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
+    const dashedMat = new THREE.LineDashedMaterial({
+      color: 0x88cc88,
+      dashSize: 0.08,
+      gapSize: 0.06,
+    });
+    const circleLine = new THREE.Line(circleGeo, dashedMat);
+    circleLine.computeLineDistances();
+    group.add(circleLine);
 
     // Plus cross
-    const plusSize = 0.4;
+    const plusSize = 0.22;
     const plusMat = new THREE.LineBasicMaterial({ color: 0xd9d9d9 });
     const hPts = [new THREE.Vector3(-plusSize / 2, 0, 0), new THREE.Vector3(plusSize / 2, 0, 0)];
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(hPts), plusMat));
