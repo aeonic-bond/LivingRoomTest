@@ -375,59 +375,67 @@ class TransformController {
       }
     }
 
-    // Corner affinity reorientation
+    // Corner affinity reorientation — proximity to adjacent corners (ignores room edges)
     if (config.affinity === 'corner' && item.cornerId != null && this.corners && this._reorientCooldown <= 0) {
-      const rawOverX = rawX < bounds.minX ? bounds.minX - rawX :
-                       rawX > bounds.maxX ? rawX - bounds.maxX : 0;
-      const rawOverZ = rawZ < bounds.minZ ? bounds.minZ - rawZ :
-                       rawZ > bounds.maxZ ? rawZ - bounds.maxZ : 0;
-      const rawOver = Math.max(rawOverX, rawOverZ);
+      const currentCorner = this.corners.getCorner(item.cornerId);
+      const curDx = rawX - currentCorner.x;
+      const curDz = rawZ - currentCorner.z;
+      const curDist = Math.sqrt(curDx * curDx + curDz * curDz);
 
-      if (rawOver > 1.5) {
-        // Find which corner the overshoot direction points toward
-        const overDirX = rawX < bounds.minX ? -1 : rawX > bounds.maxX ? 1 : 0;
-        const overDirZ = rawZ < bounds.minZ ? -1 : rawZ > bounds.maxZ ? 1 : 0;
+      // Check adjacent corners only (share an edge)
+      let newCorner = null;
+      const hysteresis = 3;
+      for (const corner of this.corners.corners) {
+        if (corner.id === item.cornerId) continue;
+        const shared = corner.edgeIds.some(id => currentCorner.edgeIds.includes(id));
+        if (!shared) continue;
 
-        // Find adjacent corner in overshoot direction
-        // Adjacent = shares one edge ID with current corner
-        const currentCorner = this.corners.getCorner(item.cornerId);
-        let newCorner = null;
-        let bestDot = Infinity;
-        for (const corner of this.corners.corners) {
-          if (corner.id === item.cornerId) continue;
-          // Check adjacency: must share at least one edge
-          const shared = corner.edgeIds.some(id => currentCorner.edgeIds.includes(id));
-          if (!shared) continue;
-          // Corner normal opposes the direction you'd approach from
-          const dot = overDirX * corner.normal.x + overDirZ * corner.normal.z;
-          if (dot < bestDot) {
-            bestDot = dot;
-            newCorner = corner;
-          }
+        const dx = rawX - corner.x;
+        const dz = rawZ - corner.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        if (dist < curDist - hysteresis) {
+          newCorner = corner;
+          break;
         }
+      }
 
-        if (newCorner) {
-          const newSx = newCorner.normal.x > 0 ? 1 : -1;
-          const newSz = newCorner.normal.z > 0 ? 1 : -1;
+      if (newCorner) {
+        const newSx = newCorner.normal.x > 0 ? 1 : -1;
+        const newSz = newCorner.normal.z > 0 ? 1 : -1;
 
-          // Check collision at new orientation
-          const tempItem = { ...item, cornerId: newCorner.id, sx: newSx, sz: newSz };
-          const testOverlaps = Collision.findOverlaps(item.type, rawX, rawZ, tempItem, this.sceneData, item.id);
+        // Check collision at new orientation
+        const tempItem = { ...item, cornerId: newCorner.id, sx: newSx, sz: newSz };
+        const testOverlaps = Collision.findOverlaps(item.type, rawX, rawZ, tempItem, this.sceneData, item.id);
 
-          if (testOverlaps.length === 0) {
-            this.sceneData.update(item.id, {
-              cornerId: newCorner.id,
-              sx: newSx,
-              sz: newSz,
-            });
-            const mesh = this.sceneCtrl.meshes[item.id];
-            if (mesh) mesh.scale.set(newSx, 1, newSz);
-            this._reorientCooldown = 1.0;
-            bounds = this._getBounds(item);
-            this._lastValidX = Math.max(bounds.minX, Math.min(bounds.maxX, rawX));
-            this._lastValidZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, rawZ));
-            this._showItemZone(item);
-          }
+        if (testOverlaps.length === 0) {
+          // Capture relative position in old bounds
+          const oldBounds = bounds;
+          const relX = (oldBounds.maxX - oldBounds.minX) > 0
+            ? (item.x - oldBounds.minX) / (oldBounds.maxX - oldBounds.minX) : 0.5;
+          const relZ = (oldBounds.maxZ - oldBounds.minZ) > 0
+            ? (item.z - oldBounds.minZ) / (oldBounds.maxZ - oldBounds.minZ) : 0.5;
+
+          // Apply reorientation
+          this.sceneData.update(item.id, {
+            cornerId: newCorner.id,
+            sx: newSx,
+            sz: newSz,
+          });
+          const mesh = this.sceneCtrl.meshes[item.id];
+          if (mesh) mesh.scale.set(newSx, 1, newSz);
+          this._reorientCooldown = 1.0;
+
+          // Mirror position in new bounds
+          const newBounds = this._getBounds(item);
+          const mirrorX = newBounds.minX + (1 - relX) * (newBounds.maxX - newBounds.minX);
+          const mirrorZ = newBounds.minZ + (1 - relZ) * (newBounds.maxZ - newBounds.minZ);
+
+          this.sceneData.update(item.id, { x: mirrorX, z: mirrorZ });
+          bounds = newBounds;
+          this._lastValidX = mirrorX;
+          this._lastValidZ = mirrorZ;
+          this._showItemZone(item);
         }
       }
     }
