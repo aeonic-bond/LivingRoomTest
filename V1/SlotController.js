@@ -45,14 +45,24 @@ class SlotController {
 
     this._slots = {};
     const size = this._slotSize;
-    const half = size / 2;
+    const fp = config.footprint;
 
     config.slots.forEach(slot => {
+      // Slot local dimensions: slotSize along offset axis, parent depth along edge
+      // Rotate to world space using same AABB math as everything else
+      const localW = size;    // narrow: along offset direction (local x for left/right)
+      const localD = fp.d;    // long: along parent depth (local z for left/right)
+      const cosR = Math.abs(Math.cos(item.rotation || 0));
+      const sinR = Math.abs(Math.sin(item.rotation || 0));
+      const worldW = localW * cosR + localD * sinR;
+      const worldD = localW * sinR + localD * cosR;
+      const half = Math.max(worldW, worldD) / 2;
+
       const pos = getSlotWorldPosition(item, slot, null, size);
       const filled = !!this.sceneData.getChildInSlot(parentId, slot.id);
       const blocked = filled || this._isBlocked(pos, half, parentId);
 
-      const mesh = this._buildSlotMesh(size);
+      const mesh = this._buildSlotMesh(worldW, worldD);
       mesh.position.set(item.x, 0.003, item.z);
       mesh.userData.slotId   = slot.id;
       mesh.userData.parentId = parentId;
@@ -232,11 +242,14 @@ class SlotController {
     this._slots = null;
   }
 
-  _buildSlotMesh(size) {
+  _buildSlotMesh(w, d) {
     const group = new THREE.Group();
 
+    const halfW = w / 2;
+    const halfD = d / 2;
+
     // Green fill
-    const fillGeo = new THREE.PlaneGeometry(size, size);
+    const fillGeo = new THREE.PlaneGeometry(w, d);
     const fillMat = new THREE.MeshBasicMaterial({
       color: 0x88cc88,
       transparent: true,
@@ -247,14 +260,13 @@ class SlotController {
     fillMesh.rotation.x = -Math.PI / 2;
     group.add(fillMesh);
 
-    // Border square
-    const half = size / 2;
+    // Border rect
     const borderPts = [
-      new THREE.Vector3(-half, 0.001, -half),
-      new THREE.Vector3( half, 0.001, -half),
-      new THREE.Vector3( half, 0.001,  half),
-      new THREE.Vector3(-half, 0.001,  half),
-      new THREE.Vector3(-half, 0.001, -half),
+      new THREE.Vector3(-halfW, 0.001, -halfD),
+      new THREE.Vector3( halfW, 0.001, -halfD),
+      new THREE.Vector3( halfW, 0.001,  halfD),
+      new THREE.Vector3(-halfW, 0.001,  halfD),
+      new THREE.Vector3(-halfW, 0.001, -halfD),
     ];
     const borderGeo = new THREE.BufferGeometry().setFromPoints(borderPts);
     const borderMat = new THREE.LineBasicMaterial({ color: 0x88cc88 });
