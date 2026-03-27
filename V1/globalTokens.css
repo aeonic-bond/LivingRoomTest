@@ -32,7 +32,8 @@
   --color-black-base:      #000000;
   --color-bg-gray-sink:    #D0CECE;
   --color-bg-gray-raise:   #f1f1f1;
-  --color-text-black-off:  #494949;
+  --color-text-black-off:      #494949;
+  --color-text-black-disabled: #A0A0A0;
   --color-text-gray-base:            #d9d9d9;
   --color-divider-gray-base:         #cccccc;
   --color-divider-gray-fade:         #e0e0e0;

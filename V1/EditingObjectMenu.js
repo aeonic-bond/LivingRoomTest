@@ -231,9 +231,14 @@ class EditingObjectMenu {
     const card = document.createElement('div');
     card.className = 'eom-card';
 
+    // Check if child mesh is currently hidden (blocked)
+    const isHiddenChild = item.parentId != null &&
+      this.sceneCtrl.meshes[item.id] && !this.sceneCtrl.meshes[item.id].visible;
+
     // Title bar
     const title = document.createElement('div');
     title.className = 'eom-card-title';
+    if (isHiddenChild) title.classList.add('eom-card-title-disabled');
     title.textContent = config.label;
     card.appendChild(title);
 

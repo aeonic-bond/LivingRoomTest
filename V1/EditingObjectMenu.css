@@ -51,6 +51,10 @@
   align-items: center;
 }
 
+.eom-card-title-disabled {
+  color: var(--color-text-black-disabled, #757373);
+}
+
 /* ── Card options section (white bg) ─────────────────── */
 .eom-card-options {
   background: var(--color-white-base, #fff);
