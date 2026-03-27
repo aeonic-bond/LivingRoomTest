@@ -226,6 +226,21 @@ class SceneController {
     const config = FURNITURE[item.type];
     if (!config) return;
 
+    // Children derive position and rotation from parent
+    if (item.parentId != null) {
+      const parentItem = this.sceneData.get(item.parentId);
+      if (parentItem) {
+        const parentConfig = FURNITURE[parentItem.type];
+        const slotConfig = parentConfig.slots.find(s => s.id === item.slotId);
+        if (slotConfig) {
+          const pos = getSlotWorldPosition(parentItem, slotConfig, item.type);
+          item.x = pos.x;
+          item.z = pos.z;
+        }
+        item.rotation = parentItem.rotation || 0;
+      }
+    }
+
     const group = MeshFactory.build(config, item);
     this.scene.add(group);
     this.meshes[item.id] = group;
@@ -243,5 +258,49 @@ class SceneController {
     if (!group) return;
     group.position.set(item.x, 0, item.z);
     group.rotation.y = item.rotation || 0;
+
+    // When a parent moves, update all children
+    this._updateChildren(item);
   }
+
+  /**
+   * Recompute world positions for all children of a parent item.
+   * Hides children that would be out of bounds or colliding.
+   */
+  _updateChildren(parentItem) {
+    const children = this.sceneData.getChildren(parentItem.id);
+    if (children.length === 0) return;
+
+    const parentConfig = FURNITURE[parentItem.type];
+    if (!parentConfig || !parentConfig.slots) return;
+
+    const rot = parentItem.rotation || 0;
+    const cosR = Math.abs(Math.cos(rot));
+    const sinR = Math.abs(Math.sin(rot));
+
+    for (const child of children) {
+      const slotConfig = parentConfig.slots.find(s => s.id === child.slotId);
+      if (!slotConfig) continue;
+
+      const pos = getSlotWorldPosition(parentItem, slotConfig, child.type);
+      child.x = pos.x;
+      child.z = pos.z;
+      child.rotation = rot;
+
+      // AABB of child in world space
+      const childFp = FURNITURE[child.type].footprint;
+      const halfW = (childFp.w * cosR + childFp.d * sinR) / 2;
+      const halfD = (childFp.w * sinR + childFp.d * cosR) / 2;
+
+      const blocked = isSlotBlocked(pos, halfW, halfD, parentItem.id, this.room, this.sceneData);
+
+      const childGroup = this.meshes[child.id];
+      if (childGroup) {
+        childGroup.position.set(pos.x, 0, pos.z);
+        childGroup.rotation.y = rot;
+        childGroup.visible = !blocked;
+      }
+    }
+  }
+
 }

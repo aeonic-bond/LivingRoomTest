@@ -169,6 +169,25 @@ class SlotController {
     return this._parentId;
   }
 
+  /**
+   * Hit test: check if a world point falls within a visible, unfilled slot.
+   * @returns {{ parentId, slotId } | null}
+   */
+  hitTest(x, z) {
+    if (!this._slots) return null;
+    const radius = this._slotSize / 2;
+    for (const slotId in this._slots) {
+      const g = this._slots[slotId];
+      if (!g.visible || g.userData.hiding || g.userData.filled) continue;
+      const dx = x - g.position.x;
+      const dz = z - g.position.z;
+      if (dx * dx + dz * dz <= radius * radius) {
+        return { parentId: g.userData.parentId, slotId: g.userData.slotId };
+      }
+    }
+    return null;
+  }
+
   // ── Single visibility control ───────────────────────────
 
   /**
@@ -293,23 +312,6 @@ class SlotController {
   }
 
   _isBlocked(pos, halfW, halfD, parentId) {
-    // Room bounds
-    if (pos.x - halfW < 0 || pos.x + halfW > this.room.width ||
-        pos.z - halfD < 0 || pos.z + halfD > this.room.height) return true;
-
-    // Collision with placed items (skip children, skip parent)
-    const slotRect = {
-      minX: pos.x - halfW, minZ: pos.z - halfD,
-      maxX: pos.x + halfW, maxZ: pos.z + halfD,
-    };
-    for (const other of this.sceneData.items) {
-      if (other.id === parentId) continue;
-      if (other.parentId != null) continue;
-      const otherRects = Collision.getWorldRects(other.type, other.x, other.z, other);
-      for (const r of otherRects) {
-        if (Collision.rectsOverlap(slotRect, r)) return true;
-      }
-    }
-    return false;
+    return isSlotBlocked(pos, halfW, halfD, parentId, this.room, this.sceneData);
   }
 }

@@ -425,35 +425,64 @@ class TransformController {
     let x = oX.value;
     let z = oZ.value;
 
-    // Edge slot snap — detent at the last position before a slot disappears
+    // Edge slot snap — detent at the last position before a slot/child disappears
     if (config.affinity === 'edge' && item.edgeId != null && config.slots) {
       const edge = this.edges.getEdge(item.edgeId);
       if (edge) {
-        const slotSize = 1.5;
         const fp = config.footprint;
         const cosR = Math.abs(Math.cos(item.rotation || 0));
         const sinR = Math.abs(Math.sin(item.rotation || 0));
         const isHorizontal = Math.abs(edge.normal.z) > Math.abs(edge.normal.x);
-        // Parent half along the SLIDE axis (slots extend along local x, which rotates)
         const parentHalf = isHorizontal
-          ? (fp.w * cosR + fp.d * sinR) / 2   // slide along x
-          : (fp.w * sinR + fp.d * cosR) / 2;  // slide along z
-        const slotExtent = parentHalf + 0.25 + slotSize; // item center to slot outer edge
+          ? (fp.w * cosR + fp.d * sinR) / 2
+          : (fp.w * sinR + fp.d * cosR) / 2;
+
+        // Compute per-side extent from parent center to outermost slot/child edge.
+        // "low" = toward room min (left/top), "high" = toward room max (right/bottom).
+        let lowExtent = 0, highExtent = 0;
+        const rot = item.rotation || 0;
+        for (const slot of config.slots) {
+          const child = this.sceneData.getChildInSlot(item.id, slot.id);
+          let childHalf;
+          if (child) {
+            const childFp = FURNITURE[child.type].footprint;
+            childHalf = isHorizontal
+              ? (childFp.w * cosR + childFp.d * sinR) / 2
+              : (childFp.w * sinR + childFp.d * cosR) / 2;
+          } else {
+            childHalf = 0.8 / 2;
+          }
+          const extent = parentHalf + SLOT_GAP + childHalf * 2;
+
+          // Determine which world side this slot is on along the slide axis.
+          // Compute slot world offset from parent center (just the slide-axis component).
+          const slotPos = getSlotWorldPosition(
+            { ...item, x: 0, z: 0 }, slot, child ? child.type : null, child ? undefined : 0.8
+          );
+          const slideOffset = isHorizontal ? slotPos.x : slotPos.z;
+
+          if (slideOffset < 0) {
+            lowExtent = Math.max(lowExtent, extent);
+          } else {
+            highExtent = Math.max(highExtent, extent);
+          }
+        }
+
         const roomMax = isHorizontal ? this.room.width : this.room.height;
         const pos = isHorizontal ? x : z;
 
-        const slotBuffer = 0.15;  // small breathing room so slot isn't flush with room edge
-        const snapRange  = 0.5;  // magnetic pull distance
+        const slotBuffer = 0.15;
+        const snapRange  = 0.5;
 
-        const snapLow  = slotExtent + slotBuffer;          // slot fits with buffer at room min
-        const snapHigh = roomMax - slotExtent - slotBuffer; // slot fits with buffer at room max
+        const snapLow  = lowExtent + slotBuffer;
+        const snapHigh = roomMax - highExtent - slotBuffer;
         const snapMid  = (isHorizontal ? (edge.x1 + edge.x2) : (edge.z1 + edge.z2)) / 2;
 
         let snapped = pos;
         let centerSnapped = false;
         let slotSnapped = false;
         let slotSnapPos = 0;
-        // Center snap takes priority
+        let slotSnapExtent = 0;
         if (Math.abs(pos - snapMid) < snapRange) {
           snapped = snapMid;
           centerSnapped = true;
@@ -461,28 +490,27 @@ class TransformController {
           snapped = snapLow;
           slotSnapped = true;
           slotSnapPos = snapped;
+          slotSnapExtent = lowExtent;
         } else if (pos > snapHigh - snapRange && pos < snapHigh + snapRange) {
           snapped = snapHigh;
           slotSnapped = true;
           slotSnapPos = snapped;
+          slotSnapExtent = highExtent;
         }
 
         if (isHorizontal) x = snapped;
         else z = snapped;
 
-        // Show/hide center snap line (blue)
         if (centerSnapped) {
           this._showCenterLine(edge, snapMid, isHorizontal);
         } else {
           this._hideCenterLine();
         }
 
-        // Show/hide slot snap line (green) at the slot that's about to disappear
         if (slotSnapped) {
-          // Outer edge of the slot closest to the room boundary
           const slotLinePos = slotSnapPos === snapLow
-            ? slotSnapPos - parentHalf - 0.25 - slotSize  // left/top slot outer edge
-            : slotSnapPos + parentHalf + 0.25 + slotSize; // right/bottom slot outer edge
+            ? slotSnapPos - lowExtent
+            : slotSnapPos + highExtent;
           this._showSlotLine(edge, slotLinePos, isHorizontal);
         } else {
           this._hideSlotLine();

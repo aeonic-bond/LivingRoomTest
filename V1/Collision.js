@@ -103,6 +103,7 @@ const Collision = {
     const results = [];
     for (const other of sceneData.items) {
       if (other.id === excludeId) continue;
+      if (other.parentId != null) continue; // children are soft — skip
       if (Collision.itemsOverlap(type, x, z, itemData, other.type, other.x, other.z, other)) {
         results.push(other);
       }

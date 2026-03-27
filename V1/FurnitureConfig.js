@@ -89,7 +89,7 @@ const FURNITURE = {
     childOnly: true,
     buffer: 0,
     footprint: { w: 1, d: 1 },
-    mesh: { type: 'box', w: 1, h: 2.5, d: 1 },
+    mesh: { type: 'cylinder', radius: 0.5, h: 2.5 },
   },
 };
 

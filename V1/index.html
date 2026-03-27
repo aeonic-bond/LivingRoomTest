@@ -106,6 +106,7 @@
 <script src="PlacingMenu.js"></script>
 <script src="SlotUtils.js"></script>
 <script src="SlotController.js"></script>
+<script src="PlacingChildMenu.js"></script>
 <script src="TransformController.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════
@@ -168,6 +169,7 @@ const slots = new SlotController(scene, ROOM, sceneData);
 const transform = new TransformController(canvas, camera, ROOM, sceneData, sceneCtrl, state, edges, corners);
 cursor.setTransform(transform);
 const placingMenu = new PlacingMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM, corners);
+const childMenu   = new PlacingChildMenu(container, state, camera, canvas, sceneData, ROOM, edges);
 
 // ── State wiring ─────────────────────────────────────────────
 state.on('enter:placing', (data) => {
@@ -178,7 +180,7 @@ state.on('enter:placing', (data) => {
 });
 
 state.on('enter:selected', (data) => {
-  cursor.enable();
+  cursor.disable();
   pulse.stop();
   if (data && data.itemId != null) {
     sceneCtrl.selectItem(data.itemId);
@@ -189,6 +191,16 @@ state.on('enter:selected', (data) => {
 state.on('enter:transform', () => {
   cursor.disable();
   pulse.stop();
+});
+
+state.on('enter:placing_child', (data) => {
+  cursor.disable();
+  pulse.stop();
+  // Slots stay visible — the parent is still contextually selected
+});
+
+state.on('exit:placing_child', () => {
+  // Child menu hides itself via state listener
 });
 
 state.on('enter:default', () => {
@@ -226,7 +238,6 @@ canvas.addEventListener('click', (e) => {
   } else if (state.is(STATES.PLACING)) {
     state.set(STATES.DEFAULT);
   } else if (state.is(STATES.SELECTED)) {
-    // Click empty floor → go to PLACING; click on item handled by TransformController
     const rect = canvas.getBoundingClientRect();
     const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -235,19 +246,32 @@ canvas.addEventListener('click', (e) => {
     const hit = new THREE.Vector3();
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     if (raycaster.ray.intersectPlane(plane, hit)) {
-      // Check if clicking on an item
-      const hitItem = transform._hitTest(hit.x, hit.z);
-      if (hitItem) {
-        // Clicking a different item → select it
-        state.set(STATES.SELECTED, { itemId: hitItem.id });
-      } else if (hit.x >= 0 && hit.x <= ROOM.width && hit.z >= 0 && hit.z <= ROOM.height) {
-        // Empty floor → placing
-        const ux = Math.floor(hit.x) + 0.5;
-        const uz = Math.floor(hit.z) + 0.5;
-        state.set(STATES.PLACING, { x: ux, z: uz });
+      // Check if clicking a slot indicator
+      const slotHit = slots.hitTest(hit.x, hit.z);
+      if (slotHit) {
+        state.set(STATES.PLACING_CHILD, {
+          parentId: slotHit.parentId,
+          slotId:   slotHit.slotId,
+          x: hit.x,
+          z: hit.z,
+        });
       } else {
-        state.set(STATES.DEFAULT);
+        // Check if clicking on an item
+        const hitItem = transform._hitTest(hit.x, hit.z);
+        if (hitItem) {
+          state.set(STATES.SELECTED, { itemId: hitItem.id });
+        } else {
+          state.set(STATES.DEFAULT);
+        }
       }
+    } else {
+      state.set(STATES.DEFAULT);
+    }
+  } else if (state.is(STATES.PLACING_CHILD)) {
+    // Click on canvas while child menu is open → back to selected
+    const parentId = state.data ? state.data.parentId : null;
+    if (parentId != null) {
+      state.set(STATES.SELECTED, { itemId: parentId });
     } else {
       state.set(STATES.DEFAULT);
     }

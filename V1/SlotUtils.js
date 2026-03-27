@@ -116,6 +116,40 @@ function _lShapeSlotLocal(fp, slot, childFp) {
 }
 
 /**
+ * Check if a position with given AABB half-extents is blocked.
+ * Blocked = out of room bounds OR overlapping a non-child placed item.
+ * Used by SlotController, SceneController (children), and PlacingChildMenu.
+ *
+ * @param {{ x: number, z: number }} pos - world position
+ * @param {number} halfW - AABB half-width
+ * @param {number} halfD - AABB half-depth
+ * @param {number} parentId - parent item id to skip in collision
+ * @param {Object} room - room config with width, height
+ * @param {SceneData} sceneData
+ * @returns {boolean}
+ */
+function isSlotBlocked(pos, halfW, halfD, parentId, room, sceneData) {
+  // Room bounds
+  if (pos.x - halfW < 0 || pos.x + halfW > room.width ||
+      pos.z - halfD < 0 || pos.z + halfD > room.height) return true;
+
+  // Collision with placed items (skip children, skip parent)
+  const rect = {
+    minX: pos.x - halfW, minZ: pos.z - halfD,
+    maxX: pos.x + halfW, maxZ: pos.z + halfD,
+  };
+  for (const other of sceneData.items) {
+    if (other.id === parentId) continue;
+    if (other.parentId != null) continue;
+    const otherRects = Collision.getWorldRects(other.type, other.x, other.z, other);
+    for (const r of otherRects) {
+      if (Collision.rectsOverlap(rect, r)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Get all slot world positions for a parent item.
  * @param {Object} parentItem - SceneData item
  * @returns {Array<{ slotId: string, x: number, z: number }>}
