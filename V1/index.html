@@ -147,7 +147,7 @@ const cam = new CameraController(camera, container, {
 });
 cam.toDefault();
 
-const sceneCtrl = new SceneController(scene, ROOM, { showGrid: false });
+const sceneCtrl = new SceneController(scene, ROOM, camera, canvas, { showGrid: false });
 const edges   = new EdgeAffinity(ROOM);
 const corners = new CornerAffinity(ROOM, edges);
 
@@ -164,6 +164,7 @@ const sceneData = new SceneData();
 sceneCtrl.bindData(sceneData);
 const transform = new TransformController(canvas, camera, ROOM, sceneData, sceneCtrl, state, edges, corners);
 cursor.setTransform(transform);
+cursor.setSceneCtrl(sceneCtrl);
 const placingMenu = new PlacingMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM, corners);
 
 // ── State wiring ─────────────────────────────────────────────
@@ -181,6 +182,7 @@ state.on('enter:selected', (data) => {
 state.on('enter:transform', () => {
   cursor.disable();
   pulse.stop();
+  sceneCtrl.unhoverItem();
 });
 
 state.on('enter:default', () => {

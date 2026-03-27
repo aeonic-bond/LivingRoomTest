@@ -19,8 +19,9 @@ class CursorController {
     this.camera = camera;
     this.pulse  = pulse;
 
-    // Optional reference to TransformController for hit testing
+    // Optional references
     this.transform = null;
+    this.sceneCtrl = null;
 
     // State
     this.enabled  = true;
@@ -66,13 +67,16 @@ class CursorController {
       if (hitItem) {
         const config = FURNITURE[hitItem.type];
         if (config) {
-          this._setCursor('grab');
+          this._setCursor('default');
+          if (this.sceneCtrl) this.sceneCtrl.hoverItem(hitItem.id);
           if (this.hovering) this._hide();
           return;
         }
       }
     }
 
+    // Clear hover highlight when not over an item
+    if (this.sceneCtrl) this.sceneCtrl.unhoverItem();
     this._setCursor('');
 
     // Snap to center of nearest unit
@@ -93,6 +97,7 @@ class CursorController {
   _onMouseLeave() {
     this._hide();
     this._setCursor('');
+    if (this.sceneCtrl) this.sceneCtrl.unhoverItem();
   }
 
   _hide() {
@@ -114,6 +119,11 @@ class CursorController {
   /** Wire up TransformController after both are created. */
   setTransform(transform) {
     this.transform = transform;
+  }
+
+  /** Wire up SceneController for hover highlights. */
+  setSceneCtrl(sceneCtrl) {
+    this.sceneCtrl = sceneCtrl;
   }
 
   disable() {

@@ -17,12 +17,16 @@ class SceneController {
   /**
    * @param {THREE.Scene} scene
    * @param {Object} room - room config with width, height, panelCols, panelRows, unitsPerPanel
+   * @param {THREE.OrthographicCamera} camera
+   * @param {HTMLCanvasElement} canvas
    * @param {Object} opts
    * @param {boolean} [opts.showGrid=true]
    */
-  constructor(scene, room, opts = {}) {
-    this.scene = scene;
-    this.room  = room;
+  constructor(scene, room, camera, canvas, opts = {}) {
+    this.scene  = scene;
+    this.room   = room;
+    this.camera = camera;
+    this.canvas = canvas;
     this.showGrid = opts.showGrid !== undefined ? opts.showGrid : true;
 
     this._buildLighting();
@@ -155,6 +159,79 @@ class SceneController {
     const borderMat = this._zoneBorder.material;
     fillMat.opacity += (this._zoneFillTarget - fillMat.opacity) * lerp;
     borderMat.opacity += (this._zoneBorderTarget - borderMat.opacity) * lerp;
+  }
+
+  // ── Hover highlight (HTML overlay bbox) ────────────────
+
+  _worldToScreen(wx, wz) {
+    const v = new THREE.Vector3(wx, 0, wz);
+    v.project(this.camera);
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      x: (v.x + 1) / 2 * rect.width,
+      y: (-v.y + 1) / 2 * rect.height,
+    };
+  }
+
+  hoverItem(itemId) {
+    if (this._hoveredId === itemId) return;
+    this.unhoverItem();
+    this._hoveredId = itemId;
+
+    const item = this.sceneData.get(itemId);
+    if (!item) return;
+    const config = FURNITURE[item.type];
+    if (!config) return;
+
+    const fp = config.footprint;
+    const pad = 0.15;
+    let minX, minZ, maxX, maxZ;
+
+    if (fp.type === 'L') {
+      const rects = Collision.getWorldRects(item.type, item.x, item.z, item);
+      minX = Infinity; minZ = Infinity; maxX = -Infinity; maxZ = -Infinity;
+      for (const r of rects) {
+        minX = Math.min(minX, r.minX);
+        minZ = Math.min(minZ, r.minZ);
+        maxX = Math.max(maxX, r.maxX);
+        maxZ = Math.max(maxZ, r.maxZ);
+      }
+    } else {
+      const cosR = Math.abs(Math.cos(item.rotation || 0));
+      const sinR = Math.abs(Math.sin(item.rotation || 0));
+      const halfX = (fp.w * cosR + fp.d * sinR) / 2;
+      const halfZ = (fp.w * sinR + fp.d * cosR) / 2;
+      minX = item.x - halfX;
+      maxX = item.x + halfX;
+      minZ = item.z - halfZ;
+      maxZ = item.z + halfZ;
+    }
+
+    // Convert world bbox corners to screen
+    const topLeft = this._worldToScreen(minX - pad, minZ - pad);
+    const bottomRight = this._worldToScreen(maxX + pad, maxZ + pad);
+
+    const el = document.createElement('div');
+    el.style.position = 'absolute';
+    el.style.left = topLeft.x + 'px';
+    el.style.top = topLeft.y + 'px';
+    el.style.width = (bottomRight.x - topLeft.x) + 'px';
+    el.style.height = (bottomRight.y - topLeft.y) + 'px';
+    el.style.border = '4px solid #378ADD';
+    el.style.borderRadius = '4px';
+    el.style.pointerEvents = 'none';
+    el.style.boxSizing = 'border-box';
+
+    this.canvas.parentElement.appendChild(el);
+    this._hoverEl = el;
+  }
+
+  unhoverItem() {
+    if (this._hoverEl) {
+      this._hoverEl.remove();
+      this._hoverEl = null;
+    }
+    this._hoveredId = null;
   }
 
   // ── Selection outline ──────────────────────────────────
