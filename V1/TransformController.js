@@ -627,10 +627,10 @@ class TransformController {
   // ── Center snap line ──────────────────────────────────
 
   _showCenterLine(edge, snapPos, isHorizontal) {
-    // Only recreate if position changed
-    if (this._centerLine && this._centerLinePos === snapPos) return;
+    if (this._centerLine && this._centerLinePos === snapPos && this._centerLineEdge === edge.id) return;
     this._hideCenterLine();
     this._centerLinePos = snapPos;
+    this._centerLineEdge = edge.id;
 
     const edgePos = isHorizontal
       ? (edge.z1 + edge.z2) / 2  // edge z position
@@ -667,14 +667,16 @@ class TransformController {
     this.sceneCtrl.scene.remove(this._centerLine);
     this._centerLine = null;
     this._centerLinePos = null;
+    this._centerLineEdge = null;
   }
 
   // ── Slot snap line (green) ────────────────────────────
 
   _showSlotLine(edge, slotPos, isHorizontal) {
-    if (this._slotLine && this._slotLinePos === slotPos) return;
+    if (this._slotLine && this._slotLinePos === slotPos && this._slotLineEdge === edge.id) return;
     this._hideSlotLine();
     this._slotLinePos = slotPos;
+    this._slotLineEdge = edge.id;
 
     const edgePos = isHorizontal
       ? (edge.z1 + edge.z2) / 2
@@ -711,5 +713,6 @@ class TransformController {
     this.sceneCtrl.scene.remove(this._slotLine);
     this._slotLine = null;
     this._slotLinePos = null;
+    this._slotLineEdge = null;
   }
 }
