@@ -412,6 +412,7 @@ class TransformController {
               this.grabOffsetZ = clampedZ - pos.z;
 
               this._showItemZone(item);
+              return; // skip rest of frame to avoid stale offset artifacts
             }
           }
         }
