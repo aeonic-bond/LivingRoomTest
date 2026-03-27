@@ -382,21 +382,34 @@ class TransformController {
       const curDz = rawZ - currentCorner.z;
       const curDist = Math.sqrt(curDx * curDx + curDz * curDz);
 
-      // Check adjacent corners only (share an edge)
+      // Check overshoot against bounds (same as edge affinity pattern)
+      const rawOverX = rawX < bounds.minX ? bounds.minX - rawX :
+                       rawX > bounds.maxX ? rawX - bounds.maxX : 0;
+      const rawOverZ = rawZ < bounds.minZ ? bounds.minZ - rawZ :
+                       rawZ > bounds.maxZ ? rawZ - bounds.maxZ : 0;
+      const rawOver = Math.max(rawOverX, rawOverZ);
+
       let newCorner = null;
-      const hysteresis = 3;
-      for (const corner of this.corners.corners) {
-        if (corner.id === item.cornerId) continue;
-        const shared = corner.edgeIds.some(id => currentCorner.edgeIds.includes(id));
-        if (!shared) continue;
+      if (rawOver > 1.5) {
+        const overDirX = rawX < bounds.minX ? -1 : rawX > bounds.maxX ? 1 : 0;
+        const overDirZ = rawZ < bounds.minZ ? -1 : rawZ > bounds.maxZ ? 1 : 0;
 
-        const dx = rawX - corner.x;
-        const dz = rawZ - corner.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
+        // Only trigger if overshoot direction points away from the corner (toward interior)
+        // Corner normal points toward interior, so positive dot = toward interior
+        const dot = overDirX * currentCorner.normal.x + overDirZ * currentCorner.normal.z;
+        if (dot > 0) {
+          let bestCornerDot = Infinity;
+          for (const corner of this.corners.corners) {
+            if (corner.id === item.cornerId) continue;
+            const shared = corner.edgeIds.some(id => currentCorner.edgeIds.includes(id));
+            if (!shared) continue;
 
-        if (dist < curDist - hysteresis) {
-          newCorner = corner;
-          break;
+            const d = overDirX * corner.normal.x + overDirZ * corner.normal.z;
+            if (d < bestCornerDot) {
+              bestCornerDot = d;
+              newCorner = corner;
+            }
+          }
         }
       }
 
