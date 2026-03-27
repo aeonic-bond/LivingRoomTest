@@ -43,9 +43,10 @@ class TransformController {
     this._onMouseMove = this._onMouseMove.bind(this);
     this._onMouseUp   = this._onMouseUp.bind(this);
 
-    // Soft bounds config
-    this.softMax = 0.5;           // max overshoot in units (lower = more resistance)
-    this._bounceAnim = null;      // { item, startX, startZ, endX, endZ, elapsed, duration }
+    // Overshoot config
+    this.overshootMax = 2;        // max visual overshoot (dampened)
+    this.reorientThreshold = 1.5; // raw overshoot past bounds to trigger reorient
+    this._bounceAnim = null;
 
     this.canvas.addEventListener('mousedown', this._onMouseDown);
     document.addEventListener('mousemove', this._onMouseMove);
@@ -53,25 +54,26 @@ class TransformController {
   }
 
   /**
-   * Apply soft bounds to a value. Allows overshoot past a limit
-   * with diminishing returns, up to softMax.
-   * @param {number} value - the raw position
-   * @param {number} min - hard minimum
-   * @param {number} max - hard maximum
-   * @returns {number} soft-clamped value
+   * Dampen overshoot with diminishing returns (V0 pattern).
+   * Returns { value, rawOver, direction }
+   * - value: the dampened position
+   * - rawOver: how far past the bound in raw space (for reorient check)
+   * - direction: -1, 0, or 1
    */
-  softBounds(value, min, max) {
-    if (value >= min && value <= max) return value;
+  overshoot(value, min, max) {
+    if (value >= min && value <= max) {
+      return { value, rawOver: 0, direction: 0 };
+    }
 
-    const limit = this.softMax;
+    const limit = this.overshootMax;
     if (value < min) {
-      const over = min - value;
-      const damped = limit * (1 - 1 / (1 + over / limit));
-      return min - damped;
+      const raw = min - value;
+      const damped = limit * (1 - 1 / (1 + raw / limit));
+      return { value: min - damped, rawOver: raw, direction: -1 };
     } else {
-      const over = value - max;
-      const damped = limit * (1 - 1 / (1 + over / limit));
-      return max + damped;
+      const raw = value - max;
+      const damped = limit * (1 - 1 / (1 + raw / limit));
+      return { value: max + damped, rawOver: raw, direction: 1 };
     }
   }
 
@@ -301,173 +303,124 @@ class TransformController {
 
     let bounds = this._getBounds(item);
 
-    // Check for hard reorientation (edge-affinity items only)
+    // Unified overshoot — dampened elastic + reorientation trigger
     const config = FURNITURE[item.type];
-    if (config.affinity === 'edge' && item.edgeId != null) {
-      const rawOverX = rawX < bounds.minX ? bounds.minX - rawX :
-                       rawX > bounds.maxX ? rawX - bounds.maxX : 0;
-      const rawOverZ = rawZ < bounds.minZ ? bounds.minZ - rawZ :
-                       rawZ > bounds.maxZ ? rawZ - bounds.maxZ : 0;
-      const rawOver = Math.max(rawOverX, rawOverZ);
+    const oX = this.overshoot(rawX, bounds.minX, bounds.maxX);
+    const oZ = this.overshoot(rawZ, bounds.minZ, bounds.maxZ);
+    const rawOver = Math.max(oX.rawOver, oZ.rawOver);
 
-      if (rawOver > 1.5 && this._reorientCooldown <= 0) {
-        // Overshoot direction vector
-        const overDirX = rawX < bounds.minX ? -1 : rawX > bounds.maxX ? 1 : 0;
-        const overDirZ = rawZ < bounds.minZ ? -1 : rawZ > bounds.maxZ ? 1 : 0;
+    // Reorientation check (if past threshold and cooldown expired)
+    if (rawOver > this.reorientThreshold && this._reorientCooldown <= 0) {
+      const overDirX = oX.direction;
+      const overDirZ = oZ.direction;
 
-        // Find the edge the item is moving toward
-        // The target edge's normal opposes the overshoot direction
-        // (you drag toward a wall, that wall's normal points back at you)
+      if (config.affinity === 'edge' && item.edgeId != null) {
+        // Edge: find edge in overshoot direction
         let newEdge = null;
         let bestDot = Infinity;
         for (const edge of this.edges.edges) {
           const dot = overDirX * edge.normal.x + overDirZ * edge.normal.z;
-          if (dot < bestDot) {
-            bestDot = dot;
-            newEdge = edge;
-          }
+          if (dot < bestDot) { bestDot = dot; newEdge = edge; }
         }
         if (newEdge && newEdge.id !== item.edgeId) {
-          // Preview: check if reoriented position would collide
           const newRotation = this.edges.getRotation(newEdge);
           const tempItem = { ...item, edgeId: newEdge.id, rotation: newRotation };
-          const newBounds = this._getBounds(tempItem);
-          const testX = Math.max(newBounds.minX, Math.min(newBounds.maxX, rawX));
-          const testZ = Math.max(newBounds.minZ, Math.min(newBounds.maxZ, rawZ));
-          const wouldCollide = Collision.findOverlaps(item.type, testX, testZ, tempItem, this.sceneData, item.id);
+          const wouldCollide = Collision.findOverlaps(item.type,
+            Math.max(this._getBounds(tempItem).minX, Math.min(this._getBounds(tempItem).maxX, rawX)),
+            Math.max(this._getBounds(tempItem).minZ, Math.min(this._getBounds(tempItem).maxZ, rawZ)),
+            tempItem, this.sceneData, item.id);
 
-          if (wouldCollide.length > 0) {
-            // Collision at new orientation — block reorient
-          } else {
-          this.sceneData.update(item.id, {
-            edgeId: newEdge.id,
-            rotation: newRotation,
-          });
-          // Update the 3D mesh rotation
-          const mesh = this.sceneCtrl.meshes[item.id];
-          if (mesh) mesh.rotation.y = newRotation;
-          // Cooldown before next reorient
-          this._reorientCooldown = 1.0;
-          // Recalculate bounds for the new edge
-          bounds = this._getBounds(item);
-          // Reset last valid to current clamped position (with collision check)
-          let newX = Math.max(bounds.minX, Math.min(bounds.maxX, rawX));
-          let newZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, rawZ));
-          const reorientOverlaps = Collision.findOverlaps(item.type, newX, newZ, item, this.sceneData, item.id);
-          if (reorientOverlaps.length > 0) {
-            // Colliding at new position — push away from collider
-            const gap = 0.25;
-            const other = reorientOverlaps[0];
-            const dx = newX - other.x;
-            const dz = newZ - other.z;
-            const dist = Math.sqrt(dx * dx + dz * dz) || 1;
-            newX += (dx / dist) * gap;
-            newZ += (dz / dist) * gap;
-            newX = Math.max(bounds.minX, Math.min(bounds.maxX, newX));
-            newZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, newZ));
-          }
-          this._lastValidX = newX;
-          this._lastValidZ = newZ;
-          // Update zone highlight
-          this._showItemZone(item);
+          if (wouldCollide.length === 0) {
+            this.sceneData.update(item.id, { edgeId: newEdge.id, rotation: newRotation });
+            const mesh = this.sceneCtrl.meshes[item.id];
+            if (mesh) mesh.rotation.y = newRotation;
+            this._reorientCooldown = 1.0;
+            bounds = this._getBounds(item);
+            this._lastValidX = Math.max(bounds.minX, Math.min(bounds.maxX, rawX));
+            this._lastValidZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, rawZ));
+            this.grabOffsetX = this._lastValidX - pos.x;
+            this.grabOffsetZ = this._lastValidZ - pos.z;
+            this._showItemZone(item);
           }
         }
-      }
-    }
-
-    // Corner affinity reorientation — proximity to adjacent corners (ignores room edges)
-    if (config.affinity === 'corner' && item.cornerId != null && this.corners && this._reorientCooldown <= 0) {
-      const currentCorner = this.corners.getCorner(item.cornerId);
-      const curDx = rawX - currentCorner.x;
-      const curDz = rawZ - currentCorner.z;
-      const curDist = Math.sqrt(curDx * curDx + curDz * curDz);
-
-      // Check overshoot against bounds (same as edge affinity pattern)
-      const rawOverX = rawX < bounds.minX ? bounds.minX - rawX :
-                       rawX > bounds.maxX ? rawX - bounds.maxX : 0;
-      const rawOverZ = rawZ < bounds.minZ ? bounds.minZ - rawZ :
-                       rawZ > bounds.maxZ ? rawZ - bounds.maxZ : 0;
-      const rawOver = Math.max(rawOverX, rawOverZ);
-
-      let newCorner = null;
-      if (rawOver > 1.5) {
-        const overDirX = rawX < bounds.minX ? -1 : rawX > bounds.maxX ? 1 : 0;
-        const overDirZ = rawZ < bounds.minZ ? -1 : rawZ > bounds.maxZ ? 1 : 0;
-
-        // Only trigger if overshoot direction points away from the corner (toward interior)
-        // Corner normal points toward interior, so positive dot = toward interior
+      } else if (config.affinity === 'corner' && item.cornerId != null && this.corners) {
+        // Corner: only trigger toward interior, adjacent corners only
+        const currentCorner = this.corners.getCorner(item.cornerId);
         const dot = overDirX * currentCorner.normal.x + overDirZ * currentCorner.normal.z;
+
         if (dot > 0) {
+          let newCorner = null;
           let bestCornerDot = Infinity;
           for (const corner of this.corners.corners) {
             if (corner.id === item.cornerId) continue;
             const shared = corner.edgeIds.some(id => currentCorner.edgeIds.includes(id));
             if (!shared) continue;
-
             const d = overDirX * corner.normal.x + overDirZ * corner.normal.z;
-            if (d < bestCornerDot) {
-              bestCornerDot = d;
-              newCorner = corner;
+            if (d < bestCornerDot) { bestCornerDot = d; newCorner = corner; }
+          }
+
+          if (newCorner) {
+            const newSx = newCorner.normal.x > 0 ? 1 : -1;
+            const newSz = newCorner.normal.z > 0 ? 1 : -1;
+            const tempItem = { ...item, cornerId: newCorner.id, sx: newSx, sz: newSz };
+            const testOverlaps = Collision.findOverlaps(item.type, rawX, rawZ, tempItem, this.sceneData, item.id);
+
+            if (testOverlaps.length === 0) {
+              // Use stored center: hinge + centerOff = bbox center
+              const oldCenterX = this._lastValidX + item.centerOffX;
+              const oldCenterZ = this._lastValidZ + item.centerOffZ;
+
+              // Compute new center offset
+              const cfp = config.footprint;
+              const ch = cfp.hinge;
+              const majT = ch.w + cfp.majorThrust;
+              const minT = ch.d + cfp.minorThrust;
+              const newCenterOffX = (majT / 2 - ch.w / 2) * newSx;
+              const newCenterOffZ = (minT / 2 - ch.d / 2) * newSz;
+
+              // Apply reorientation
+              this.sceneData.update(item.id, {
+                cornerId: newCorner.id,
+                sx: newSx,
+                sz: newSz,
+                centerOffX: newCenterOffX,
+                centerOffZ: newCenterOffZ,
+              });
+              this._reorientCooldown = 1.0;
+
+              // Derive new hinge from preserved center
+              const newHingeX = oldCenterX - newCenterOffX;
+              const newHingeZ = oldCenterZ - newCenterOffZ;
+
+              // Clamp to new bounds
+              const newBounds = this._getBounds(item);
+              const clampedX = Math.max(newBounds.minX, Math.min(newBounds.maxX, newHingeX));
+              const clampedZ = Math.max(newBounds.minZ, Math.min(newBounds.maxZ, newHingeZ));
+
+              this.sceneData.update(item.id, { x: clampedX, z: clampedZ });
+
+              // Rebuild mesh
+              this.sceneCtrl._removeMesh(item);
+              this.sceneCtrl._addMesh(item);
+
+              bounds = newBounds;
+              this._lastValidX = clampedX;
+              this._lastValidZ = clampedZ;
+
+              // Reset grab offset from cursor to new hinge position
+              this.grabOffsetX = clampedX - pos.x;
+              this.grabOffsetZ = clampedZ - pos.z;
+
+              this._showItemZone(item);
             }
           }
         }
       }
-
-      if (newCorner) {
-        const newSx = newCorner.normal.x > 0 ? 1 : -1;
-        const newSz = newCorner.normal.z > 0 ? 1 : -1;
-
-        // Check collision at new orientation
-        const tempItem = { ...item, cornerId: newCorner.id, sx: newSx, sz: newSz };
-        const testOverlaps = Collision.findOverlaps(item.type, rawX, rawZ, tempItem, this.sceneData, item.id);
-
-        if (testOverlaps.length === 0) {
-          // Compute visual bbox shift compensation
-          const cfp = config.footprint;
-          const ch = cfp.hinge;
-          const oldSxVal = currentCorner.normal.x > 0 ? 1 : -1;
-          const oldSzVal = currentCorner.normal.z > 0 ? 1 : -1;
-          const majT = ch.w + cfp.majorThrust;
-          const minT = ch.d + cfp.minorThrust;
-
-          const oldBboxCX = (majT / 2 - ch.w / 2) * oldSxVal;
-          const oldBboxCZ = (minT / 2 - ch.d / 2) * oldSzVal;
-          const newBboxCX = (majT / 2 - ch.w / 2) * newSx;
-          const newBboxCZ = (minT / 2 - ch.d / 2) * newSz;
-
-          // Apply reorientation
-          this.sceneData.update(item.id, {
-            cornerId: newCorner.id,
-            sx: newSx,
-            sz: newSz,
-          });
-          const mesh = this.sceneCtrl.meshes[item.id];
-          if (mesh) mesh.scale.set(newSx, 1, newSz);
-          this._reorientCooldown = 1.0;
-
-          // Keep visual bbox stable — compensate for hinge-to-bbox-center shift
-          let newX = item.x - (newBboxCX - oldBboxCX);
-          let newZ = item.z - (newBboxCZ - oldBboxCZ);
-
-          const newBounds = this._getBounds(item);
-          newX = Math.max(newBounds.minX, Math.min(newBounds.maxX, newX));
-          newZ = Math.max(newBounds.minZ, Math.min(newBounds.maxZ, newZ));
-
-          this.sceneData.update(item.id, { x: newX, z: newZ });
-          bounds = newBounds;
-          this._lastValidX = newX;
-          this._lastValidZ = newZ;
-          // Update grab offset so drag continues from new position
-          this.grabOffsetX = newX - pos.x;
-          this.grabOffsetZ = newZ - pos.z;
-          this._showItemZone(item);
-        }
-      }
     }
 
-    // Soft bounds
-    let x = this.softBounds(rawX, bounds.minX, bounds.maxX);
-    let z = this.softBounds(rawZ, bounds.minZ, bounds.maxZ);
+    // Apply dampened overshoot position
+    let x = oX.value;
+    let z = oZ.value;
 
     // Check collision with other items
     const overlaps = Collision.findOverlaps(item.type, x, z, item, this.sceneData, item.id);
@@ -481,8 +434,8 @@ class TransformController {
       // Collision — apply soft bounds relative to last valid position
       const dx = x - this._lastValidX;
       const dz = z - this._lastValidZ;
-      const softX = this._lastValidX + this.softBounds(dx, -this.softMax, this.softMax);
-      const softZ = this._lastValidZ + this.softBounds(dz, -this.softMax, this.softMax);
+      const softX = this._lastValidX + this.overshoot(dx, -this.overshootMax, this.overshootMax).value;
+      const softZ = this._lastValidZ + this.overshoot(dz, -this.overshootMax, this.overshootMax).value;
       this.sceneData.update(item.id, { x: softX, z: softZ });
     }
   }

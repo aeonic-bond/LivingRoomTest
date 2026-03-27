@@ -38,6 +38,8 @@ class SceneData {
       minorEdgeId: entry.minorEdgeId !== undefined ? entry.minorEdgeId : null,
       sx:          entry.sx !== undefined ? entry.sx : 1,
       sz:          entry.sz !== undefined ? entry.sz : 1,
+      centerOffX:  entry.centerOffX || 0,
+      centerOffZ:  entry.centerOffZ || 0,
       variant:     entry.variant || null,
     };
     this.items.push(item);

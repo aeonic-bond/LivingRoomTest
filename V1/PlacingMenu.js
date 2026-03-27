@@ -330,6 +330,17 @@ class PlacingMenu {
       }
     }
 
+    // Compute center offset for L-shapes
+    let centerOffX = 0, centerOffZ = 0;
+    const placeFp = config.footprint;
+    if (placeFp.type === 'L') {
+      const h = placeFp.hinge;
+      const majT = h.w + placeFp.majorThrust;
+      const minT = h.d + placeFp.minorThrust;
+      centerOffX = (majT / 2 - h.w / 2) * sx;
+      centerOffZ = (minT / 2 - h.d / 2) * sz;
+    }
+
     const item = this.sceneData.add({
       type:        typeId,
       x:           x,
@@ -341,6 +352,8 @@ class PlacingMenu {
       minorEdgeId: minorEdgeId,
       sx:          sx,
       sz:          sz,
+      centerOffX:  centerOffX,
+      centerOffZ:  centerOffZ,
     });
 
     this.state.set(STATES.SELECTED, { itemId: item.id });
