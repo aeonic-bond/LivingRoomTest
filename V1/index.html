@@ -197,7 +197,11 @@ state.on('enter:transform', () => {
 state.on('enter:placing_child', (data) => {
   cursor.disable();
   pulse.stop();
-  // Slots stay visible — the parent is still contextually selected
+  if (data && data.slotId) slots.lockHover(data.slotId);
+});
+
+state.on('exit:placing_child', () => {
+  slots.unlockHover();
 });
 
 state.on('enter:default', () => {

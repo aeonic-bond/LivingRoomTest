@@ -22,6 +22,7 @@ class SlotController {
     this._slotSize = 0.8;
     this._animSpeed = 0.03;
     this._hoveredSlotId = null;
+    this._lockedHover = false;
 
     // React to child add/remove
     this.sceneData.on('add', (item) => this._onChildAdd(item));
@@ -171,9 +172,26 @@ class SlotController {
   }
 
   /**
+   * Lock a slot in hover state (e.g. during PLACING_CHILD).
+   */
+  lockHover(slotId) {
+    this._lockedHover = true;
+    this._setHoveredSlot(slotId);
+  }
+
+  /**
+   * Release hover lock.
+   */
+  unlockHover() {
+    this._lockedHover = false;
+    this._setHoveredSlot(null);
+  }
+
+  /**
    * Update hover state from a world position. Call from mouse move.
    */
   updateHover(x, z) {
+    if (this._lockedHover) return;
     if (!this._slots) { this._setHoveredSlot(null); return; }
     const radius = this._slotSize / 2;
     for (const slotId in this._slots) {
