@@ -33,11 +33,8 @@ const FURNITURE = {
       minorThrust: 4,               // extends beyond hinge along minor edge
     },
     mesh: { type: 'box', w: 8, h: 0.35, d: 8 },  // placeholder until L-shape mesh
-    slots: [
-      { id: 'major-0', side: 'major', along: 0.5 },
-      { id: 'minor-0', side: 'minor', along: 0.5 },
-    ],
-    allowedChildren: ['sideTable', 'floorLamp'],
+    // slots: TODO — L-shape slot support
+    // allowedChildren: ['sideTable', 'floorLamp'],
   },
   chair: {
     id: 'chair',
@@ -54,11 +51,6 @@ const FURNITURE = {
     buffer: 1,
     footprint: { w: 7, d: 3 },
     mesh: { type: 'box', w: 7, h: 0.4, d: 3 },
-    slots: [
-      { id: 'left-0',  side: 'left',  along: 0.5 },
-      { id: 'right-0', side: 'right', along: 0.5 },
-    ],
-    allowedChildren: ['sideTable', 'floorLamp'],
   },
   coffeeTable: {
     id: 'coffeeTable',

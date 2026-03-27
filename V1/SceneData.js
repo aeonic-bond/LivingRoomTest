@@ -41,6 +41,8 @@ class SceneData {
       centerOffX:  entry.centerOffX || 0,
       centerOffZ:  entry.centerOffZ || 0,
       variant:     entry.variant || null,
+      parentId:    entry.parentId !== undefined ? entry.parentId : null,
+      slotId:      entry.slotId !== undefined ? entry.slotId : null,
     };
     this.items.push(item);
     this._emit('add', item);
@@ -51,6 +53,10 @@ class SceneData {
    * Remove an item by id.
    */
   remove(id) {
+    // Cascade: remove children first
+    const children = this.getChildren(id);
+    children.forEach(child => this.remove(child.id));
+
     const idx = this.items.findIndex(it => it.id === id);
     if (idx === -1) return;
     const item = this.items[idx];
@@ -73,6 +79,22 @@ class SceneData {
     if (!item) return;
     Object.assign(item, props);
     this._emit('update', item);
+  }
+
+  // ── Parent-child helpers ────────────────────────────────
+
+  /**
+   * Get all children of a parent item.
+   */
+  getChildren(parentId) {
+    return this.items.filter(it => it.parentId === parentId);
+  }
+
+  /**
+   * Get the child occupying a specific slot on a parent.
+   */
+  getChildInSlot(parentId, slotId) {
+    return this.items.find(it => it.parentId === parentId && it.slotId === slotId) || null;
   }
 
   /**
