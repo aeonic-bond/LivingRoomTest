@@ -494,10 +494,11 @@ class TransformController {
       }
     }
 
+    const draggedId = this.dragItemId;
     this.dragItemId = null;
 
     if (this.state.is(STATES.TRANSFORM)) {
-      this.state.set(this._prevState || STATES.DEFAULT);
+      this.state.set(STATES.SELECTED, { itemId: draggedId });
     }
   }
 

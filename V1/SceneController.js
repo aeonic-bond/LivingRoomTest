@@ -160,6 +160,7 @@ class SceneController {
   // ── Selection outline ──────────────────────────────────
 
   selectItem(itemId) {
+    if (this._selectedId === itemId) return;
     this.deselectItem();
     this._selectedId = itemId;
     const group = this.meshes[itemId];
@@ -177,7 +178,6 @@ class SceneController {
       }
     });
 
-    this._showSlots(itemId);
   }
 
   deselectItem() {
@@ -191,162 +191,7 @@ class SceneController {
         }
       });
     }
-    this._hideSlots();
     this._selectedId = null;
-  }
-
-  // ── Child slot indicators ────────────────────────────────
-
-  _showSlots(parentId) {
-    this._hideSlots();
-    const item = this.sceneData.get(parentId);
-    if (!item) return;
-    const config = FURNITURE[item.type];
-    if (!config || !config.slots) return;
-
-    this._slotMeshes = [];
-    const slotSize = 1.5; // visual size of slot indicator (ft)
-
-    config.slots.forEach(slot => {
-      // Skip slots that already have a child
-      if (this.sceneData.getChildInSlot(parentId, slot.id)) return;
-
-      const pos = getSlotWorldPosition(item, slot, null, slotSize);
-
-      // Check if initially blocked
-      const half = slotSize / 2;
-      const initBlocked = this._isSlotBlocked(pos, half, parentId);
-
-      const group = new THREE.Group();
-
-      // Green fill (same as pulse: 0x88cc88)
-      const fillGeo = new THREE.PlaneGeometry(slotSize, slotSize);
-      const fillMat = new THREE.MeshBasicMaterial({
-        color: 0x88cc88,
-        transparent: true,
-        opacity: 0.1,
-        depthWrite: false,
-      });
-      const fillMesh = new THREE.Mesh(fillGeo, fillMat);
-      fillMesh.rotation.x = -Math.PI / 2;
-      group.add(fillMesh);
-
-      // Border square
-      const borderPts = [
-        new THREE.Vector3(-slotSize / 2, 0.001, -slotSize / 2),
-        new THREE.Vector3( slotSize / 2, 0.001, -slotSize / 2),
-        new THREE.Vector3( slotSize / 2, 0.001,  slotSize / 2),
-        new THREE.Vector3(-slotSize / 2, 0.001,  slotSize / 2),
-        new THREE.Vector3(-slotSize / 2, 0.001, -slotSize / 2),
-      ];
-      const borderGeo = new THREE.BufferGeometry().setFromPoints(borderPts);
-      const borderMat = new THREE.LineBasicMaterial({ color: 0x88cc88 });
-      group.add(new THREE.Line(borderGeo, borderMat));
-
-      // Plus cross
-      const plusSize = 0.4;
-      const plusMat = new THREE.LineBasicMaterial({ color: 0xd9d9d9 });
-      // Horizontal bar
-      const hPts = [new THREE.Vector3(-plusSize / 2, 0, 0), new THREE.Vector3(plusSize / 2, 0, 0)];
-      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(hPts), plusMat));
-      // Vertical bar
-      const vPts = [new THREE.Vector3(0, 0, -plusSize / 2), new THREE.Vector3(0, 0, plusSize / 2)];
-      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(vPts), plusMat));
-
-      // Start at parent center, animate to target
-      group.position.set(item.x, 0.003, item.z);
-      group.userData.slotId = slot.id;
-      group.userData.parentId = parentId;
-      group.userData.targetX = pos.x;
-      group.userData.targetZ = pos.z;
-      group.userData.slideT = 0;
-      group.visible = !initBlocked;
-      this.scene.add(group);
-      this._slotMeshes.push(group);
-    });
-  }
-
-  /**
-   * Call from render loop to animate slot slide-out.
-   */
-  updateSlots() {
-    if (!this._slotMeshes) return;
-    for (const g of this._slotMeshes) {
-      if (g.userData.slideT >= 1) continue;
-      g.userData.slideT = Math.min(1, g.userData.slideT + 0.06);
-      // Ease-out cubic
-      const t = 1 - Math.pow(1 - g.userData.slideT, 3);
-      const parentItem = this.sceneData.get(g.userData.parentId);
-      if (!parentItem) continue;
-      g.position.x = parentItem.x + (g.userData.targetX - parentItem.x) * t;
-      g.position.z = parentItem.z + (g.userData.targetZ - parentItem.z) * t;
-    }
-  }
-
-  /**
-   * Move existing slot indicators to follow parent during drag.
-   * Checks bounds + collision per slot to show/hide dynamically.
-   */
-  _updateSlotPositions(item) {
-    const config = FURNITURE[item.type];
-    if (!config || !config.slots) return;
-    const slotSize = 1.5;
-    const half = slotSize / 2;
-
-    for (const g of this._slotMeshes) {
-      const slotConfig = config.slots.find(s => s.id === g.userData.slotId);
-      if (!slotConfig) continue;
-      const pos = getSlotWorldPosition(item, slotConfig, null, slotSize);
-      g.userData.targetX = pos.x;
-      g.userData.targetZ = pos.z;
-
-      const wasVisible = g.visible;
-      const nowVisible = !this._isSlotBlocked(pos, half, item.id);
-      g.visible = nowVisible;
-
-      // Reset slide animation when becoming visible
-      if (nowVisible && !wasVisible) {
-        g.userData.slideT = 0;
-        g.position.x = item.x;
-        g.position.z = item.z;
-      }
-
-      // If animation is done, snap directly
-      if (g.userData.slideT >= 1) {
-        g.position.x = pos.x;
-        g.position.z = pos.z;
-      }
-    }
-  }
-
-  _hideSlots() {
-    if (!this._slotMeshes) return;
-    this._slotMeshes.forEach(g => this.scene.remove(g));
-    this._slotMeshes = null;
-  }
-
-  /**
-   * Check if a slot position is out of bounds or colliding with other items.
-   */
-  _isSlotBlocked(pos, half, parentId) {
-    // Room bounds
-    if (pos.x - half < 0 || pos.x + half > this.room.width ||
-        pos.z - half < 0 || pos.z + half > this.room.height) return true;
-
-    // Collision with placed items
-    const slotRect = {
-      minX: pos.x - half, minZ: pos.z - half,
-      maxX: pos.x + half, maxZ: pos.z + half,
-    };
-    for (const other of this.sceneData.items) {
-      if (other.id === parentId) continue;
-      if (other.parentId != null) continue;
-      const otherRects = Collision.getWorldRects(other.type, other.x, other.z, other);
-      for (const r of otherRects) {
-        if (Collision.rectsOverlap(slotRect, r)) return true;
-      }
-    }
-    return false;
   }
 
   // ── Furniture rendering ─────────────────────────────────
@@ -428,10 +273,5 @@ class SceneController {
     if (!group) return;
     group.position.set(item.x, 0, item.z);
     group.rotation.y = item.rotation || 0;
-
-    // Move slot indicators with parent during drag
-    if (item.id === this._selectedId && this._slotMeshes) {
-      this._updateSlotPositions(item);
-    }
   }
 }
