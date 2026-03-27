@@ -1,13 +1,13 @@
-/* ── EditingObjectMenu ─────────────────────────────────── */
-.editing-object-menu {
+/* ── EditingObjectMenu — card container ───────────────── */
+.eom {
   position: absolute;
   z-index: 30;
   display: flex;
   flex-direction: column;
-  gap: 0;
-  padding: var(--spacer-300, 8px);
-  background: var(--color-bg-gray-sink, #f1f1f1);
-  border: 1px solid var(--color-text-black-off, #494949);
+  gap: var(--spacer-200, 4px);
+  padding: var(--spacer-200, 4px);
+  background: var(--color-bg-gray-sink);
+  border: 1px solid var(--color-divider-gray-base);
   width: 220px;
   border-radius: var(--radius-base, 8px);
   overflow: hidden;
@@ -15,43 +15,71 @@
   box-shadow: 1px 2px 2px rgba(0, 0, 0, 0.07);
 }
 
-.editing-object-menu.from-left.hidden {
+.eom.from-left.hidden {
   transform: translateX(40px);
   opacity: 0;
 }
-
-.editing-object-menu.from-right.hidden {
+.eom.from-right.hidden {
   transform: translateX(-40px);
   opacity: 0;
 }
 
-/* Title */
-.eom-title {
-  padding: var(--spacer-300, 8px) var(--spacer-400, 12px);
+/* ── Card (shared for Main, Child) ───────────────────── */
+.eom-card {
+  background: var(--color-bg-gray-raise);
+  border-radius: var(--radius-small, 4px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Card: child selecting state (dashed border) ─────── */
+.eom-card-child-selecting {
+  background: var(--color-bg-gray-raise);
+  border: 1px dashed var(--color-black-base, #000);
+}
+
+/* ── Card title bar ──────────────────────────────────── */
+.eom-card-title {
+  padding: var(--spacer-300, 8px);
   font-family: 'Roboto', sans-serif;
   font-size: 15px;
   font-weight: 400;
-  color: var(--color-black-base, #000);
+  color: var(--color-text-black-off, #494949);
+  height: 34px;
+  display: flex;
+  align-items: center;
 }
 
-/* Options container */
-.eom-options {
+/* ── Card options section (white bg) ─────────────────── */
+.eom-card-options {
+  background: var(--color-white-base, #fff);
+  padding: var(--spacer-400, 12px);
   display: flex;
   flex-direction: column;
-  gap: var(--spacer-200, 4px);
+  gap: var(--spacer-300, 8px);
 }
 
-/* Single option row (white card) */
+/* ── Card actions bar ────────────────────────────────── */
+.eom-card-actions {
+  padding: var(--spacer-300, 8px) var(--spacer-400, 12px);
+  display: flex;
+  align-items: center;
+}
+
+/* ── Divider between option rows ─────────────────────── */
+.eom-divider {
+  height: 1px;
+  background: var(--color-divider-gray-base);
+}
+
+/* ── Option row ──────────────────────────────────────── */
 .eom-option-row {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: var(--spacer-400, 12px);
-  background: var(--color-white-base, #fff);
-  border-radius: var(--radius-small, 4px);
 }
 
-/* Row label: "Fabric · Parchment" */
 .eom-option-label {
   display: flex;
   align-items: center;
@@ -66,11 +94,7 @@
   line-height: 1;
 }
 
-.eom-option-value {
-  /* same as label */
-}
-
-/* Swatch grid */
+/* ── Swatch grid ─────────────────────────────────────── */
 .eom-swatch-grid {
   display: flex;
   flex-wrap: wrap;
@@ -78,7 +102,6 @@
   align-items: center;
 }
 
-/* Individual swatch */
 .eom-swatch {
   position: relative;
   width: 28px;
@@ -93,19 +116,12 @@
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-/* Active selection ring */
 .eom-swatch-active .eom-swatch-circle {
   outline: 2px solid var(--color-black-base, #000);
   outline-offset: 2px;
 }
 
-/* Actions row */
-.eom-actions {
-  display: flex;
-  align-items: center;
-  padding: var(--spacer-300, 8px) var(--spacer-400, 12px);
-}
-
+/* ── Delete button ───────────────────────────────────── */
 .eom-delete {
   width: 20px;
   height: 20px;
@@ -113,11 +129,54 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 16px;
-  color: var(--color-text-black-off, #494949);
-  opacity: 0.6;
+  font-size: 14px;
+  opacity: 0.5;
 }
-
 .eom-delete:hover {
   opacity: 1;
+}
+
+/* ── Child selecting: type grid ──────────────────────── */
+.eom-child-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacer-100, 2px);
+  width: 100%;
+}
+
+.eom-child-type {
+  flex: 1 1 calc(50% - var(--spacer-100, 2px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacer-200, 4px);
+  padding: var(--spacer-400, 12px);
+  border-radius: 6px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.eom-child-type:hover {
+  background: var(--color-white-base);
+}
+
+.eom-child-placeholder {
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--color-divider-gray-base);
+}
+
+.eom-child-type-label {
+  font-family: 'Roboto', sans-serif;
+  font-size: 12px;
+  color: var(--color-black-base, #000);
+  white-space: nowrap;
+}
+
+/* ── Cancel button ───────────────────────────────────── */
+.eom-cancel {
+  font-family: 'Roboto', sans-serif;
+  font-size: 12px;
+  color: var(--color-black-base, #000);
+  cursor: pointer;
 }

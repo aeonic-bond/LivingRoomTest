@@ -109,6 +109,7 @@ const FURNITURE = {
     buffer: 0,
     footprint: { w: 1.5, d: 1.5 },
     mesh: { type: 'box', w: 1.5, h: 1.2, d: 1.5 },
+    colorOptions: { rows: [{ id: 'wood', label: 'Wood', options: PALETTE_WOOD }] },
   },
   floorLamp: {
     id: 'floorLamp',
@@ -118,6 +119,11 @@ const FURNITURE = {
     buffer: 0,
     footprint: { w: 1, d: 1 },
     mesh: { type: 'cylinder', radius: 0.5, h: 2.5 },
+    colorOptions: { rows: [{ id: 'metal', label: 'Metal', options: [
+      { id: 'brass',  label: 'Brass',  swatch: 0xB5A642, color: 0xB5A642 },
+      { id: 'black',  label: 'Black',  swatch: 0x2A2A2A, color: 0x2A2A2A },
+      { id: 'gold',   label: 'Gold',   swatch: 0xD4AF37, color: 0xD4AF37 },
+    ]}] },
   },
 };
 

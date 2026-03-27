@@ -7,8 +7,8 @@
   align-content: flex-start;
   justify-content: flex-start;
   gap: var(--spacer-100);
-  padding: var(--spacer-100);
-  background: var(--color-white-base);
+  padding: var(--spacer-200);
+  background: var(--color-bg-gray-raise);
   border: 1px solid var(--color-divider-gray-base);
   width: 220px;
   border-radius: var(--radius-base);
@@ -39,7 +39,7 @@
 }
 
 .placing-menu-item:hover {
-  background: var(--color-bg-gray-sink);
+  background: var(--color-white-base);
 }
 
 .placing-menu-icon {

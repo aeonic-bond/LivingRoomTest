@@ -108,7 +108,6 @@
 <script src="SlotUtils.js"></script>
 <script src="SlotController.js"></script>
 <script src="EditingObjectMenu.js"></script>
-<script src="PlacingChildMenu.js"></script>
 <script src="TransformController.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════
@@ -171,8 +170,7 @@ const slots = new SlotController(scene, ROOM, sceneData);
 const transform = new TransformController(canvas, camera, ROOM, sceneData, sceneCtrl, state, edges, corners);
 cursor.setTransform(transform);
 const placingMenu = new PlacingObjectMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM, corners);
-const childMenu   = new PlacingChildMenu(container, state, camera, canvas, sceneData, ROOM, edges);
-const editMenu    = new EditingObjectMenu(container, state, camera, canvas, sceneData, sceneCtrl, ROOM);
+const editMenu    = new EditingObjectMenu(container, state, camera, canvas, sceneData, sceneCtrl, ROOM, edges);
 
 // ── State wiring ─────────────────────────────────────────────
 state.on('enter:placing', (data) => {
@@ -200,10 +198,6 @@ state.on('enter:placing_child', (data) => {
   cursor.disable();
   pulse.stop();
   // Slots stay visible — the parent is still contextually selected
-});
-
-state.on('exit:placing_child', () => {
-  // Child menu hides itself via state listener
 });
 
 state.on('enter:default', () => {

@@ -1,22 +1,17 @@
 /**
  * EditingObjectMenu
  *
- * Context menu for editing a selected furniture item.
- * Shows color swatches from FurnitureConfig.colorOptions.
- * Appears on enter:selected, hides on exit:selected.
+ * Consolidated context menu for editing selected furniture.
+ * Container of cards: Main (parent) + ChildSelecting or Child cards.
+ *
+ * States:
+ *   SELECTED → shows Main card (color options, delete)
+ *   PLACING_CHILD → shows Main card + ChildSelecting card (type picker)
+ *   After child placed → shows Main card + Child card (child color options)
  */
 
 class EditingObjectMenu {
-  /**
-   * @param {HTMLElement} container
-   * @param {StateController} state
-   * @param {THREE.OrthographicCamera} camera
-   * @param {HTMLCanvasElement} canvas
-   * @param {SceneData} sceneData
-   * @param {SceneController} sceneCtrl
-   * @param {Object} room
-   */
-  constructor(container, state, camera, canvas, sceneData, sceneCtrl, room) {
+  constructor(container, state, camera, canvas, sceneData, sceneCtrl, room, edges) {
     this.container = container;
     this.state     = state;
     this.camera    = camera;
@@ -24,57 +19,48 @@ class EditingObjectMenu {
     this.sceneData = sceneData;
     this.sceneCtrl = sceneCtrl;
     this.room      = room;
+    this.edges     = edges;
 
     this._itemId = null;
+    this._lockedItemId = null;
+    this._childSlotId = null;
+    this._childParentId = null;
 
     this._buildDOM();
     this._bindState();
   }
 
+  // ── DOM ──────────────────────────────────────────────────
+
   _buildDOM() {
     this.el = document.createElement('div');
-    this.el.className = 'editing-object-menu';
+    this.el.className = 'eom';
     this.el.style.display = 'none';
 
-    // Title
-    this._titleEl = document.createElement('div');
-    this._titleEl.className = 'eom-title';
-    this.el.appendChild(this._titleEl);
-
-    // Options container (rows go here)
-    this._optionsEl = document.createElement('div');
-    this._optionsEl.className = 'eom-options';
-    this.el.appendChild(this._optionsEl);
-
-    // Actions row
-    const actionsEl = document.createElement('div');
-    actionsEl.className = 'eom-actions';
-    const deleteBtn = document.createElement('div');
-    deleteBtn.className = 'eom-delete';
-    deleteBtn.innerHTML = '&#x1D5F;'; // trash unicode placeholder
-    deleteBtn.title = 'Delete';
-    deleteBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._onDelete();
-    });
-    actionsEl.appendChild(deleteBtn);
-    this.el.appendChild(actionsEl);
+    // Cards get appended dynamically
+    this._mainCardEl = null;
+    this._childCardEl = null;
+    this._childSelectingEl = null;
 
     this.container.appendChild(this.el);
   }
+
+  // ── State binding ────────────────────────────────────────
 
   _bindState() {
     this.state.on('enter:selected', (data) => {
       if (data && data.itemId != null) this.show(data.itemId);
     });
+    this.state.on('enter:placing_child', (data) => {
+      if (data) this._showChildSelecting(data.parentId, data.slotId);
+    });
     this.state.on('enter:default', () => {
       this.hide();
       this._lockedItemId = null;
     });
-    this.state.on('enter:placing_child', () => {
-      this.hide();
-    });
   }
+
+  // ── Positioning ──────────────────────────────────────────
 
   _worldToScreen(wx, wz) {
     const v = new THREE.Vector3(wx, 0, wz);
@@ -86,74 +72,146 @@ class EditingObjectMenu {
     };
   }
 
+  _lockPosition(itemId) {
+    if (this._lockedItemId === itemId) return;
+    const item = this.sceneData.get(itemId);
+    if (!item) return;
+
+    const itemScreen = this._worldToScreen(item.x, item.z);
+    const gridCenterScreen = this._worldToScreen(this.room.width / 2, this.room.height / 2);
+    const fromLeft = itemScreen.x < gridCenterScreen.x;
+
+    const leftEdge  = this._worldToScreen(0, this.room.height / 2);
+    const rightEdge = this._worldToScreen(this.room.width, this.room.height / 2);
+    const gap = 24;
+    const mw = 220;
+
+    this.el.classList.remove('from-left', 'from-right', 'hidden');
+    this.el.style.removeProperty('left');
+    this.el.style.removeProperty('right');
+    this.el.style.removeProperty('top');
+    this.el.style.removeProperty('bottom');
+
+    if (fromLeft) {
+      this.el.style.left = (leftEdge.x - mw - gap) + 'px';
+      this.el.classList.add('from-left');
+    } else {
+      this.el.style.left = (rightEdge.x + gap) + 'px';
+      this.el.classList.add('from-right');
+    }
+
+    this.el.classList.add('hidden');
+    this.el.style.display = 'flex';
+
+    // Pin to top of scene
+    const topEdge = this._worldToScreen(this.room.width / 2, 0);
+    this.el.style.top = topEdge.y + 'px';
+
+    this.el.offsetHeight;
+    this.el.classList.remove('hidden');
+
+    this._lockedItemId = itemId;
+  }
+
+  // ── Show / Hide ──────────────────────────────────────────
+
   show(itemId) {
     this._itemId = itemId;
     const item = this.sceneData.get(itemId);
     if (!item) return;
-    const config = FURNITURE[item.type];
-    if (!config) return;
-
-    // Title
-    this._titleEl.textContent = config.label;
-
-    // Rebuild option rows
-    this._optionsEl.innerHTML = '';
-    if (config.colorOptions) {
-      for (const row of config.colorOptions.rows) {
-        this._optionsEl.appendChild(this._buildOptionRow(row, item));
-      }
-    }
-
-    // Lock entire position on first show for this item — stays fixed until DEFAULT
-    if (this._lockedItemId !== itemId) {
-      const itemScreen = this._worldToScreen(item.x, item.z);
-      const gridCenterScreen = this._worldToScreen(this.room.width / 2, this.room.height / 2);
-      const fromLeft = itemScreen.x < gridCenterScreen.x;
-
-      const leftEdge  = this._worldToScreen(0, this.room.height / 2);
-      const rightEdge = this._worldToScreen(this.room.width, this.room.height / 2);
-      const gap = 24;
-      const mw = 220;
-
-      this.el.classList.remove('from-left', 'from-right', 'hidden');
-      this.el.style.removeProperty('left');
-      this.el.style.removeProperty('right');
-      this.el.style.removeProperty('top');
-      this.el.style.removeProperty('bottom');
-
-      if (fromLeft) {
-        this.el.style.left = (leftEdge.x - mw - gap) + 'px';
-        this.el.classList.add('from-left');
-      } else {
-        this.el.style.left = (rightEdge.x + gap) + 'px';
-        this.el.classList.add('from-right');
-      }
-
-      this.el.classList.add('hidden');
-      this.el.style.display = 'flex';
-
-      // Vertical position
-      const ch = this.container.clientHeight;
-      const mh = this.el.offsetHeight;
-      const pad = 8;
-      const offset = 24;
-      const yPct = itemScreen.y / ch;
-
-      if (yPct >= 0.45 && yPct <= 0.55) {
-        this.el.style.top = Math.max(pad, Math.min(ch - mh - pad, itemScreen.y - mh / 2)) + 'px';
-      } else if (yPct < 0.45) {
-        this.el.style.top = Math.max(pad, Math.min(ch - mh - pad, itemScreen.y - offset)) + 'px';
-      } else {
-        this.el.style.bottom = Math.max(pad, Math.min(ch - mh - pad, ch - itemScreen.y - offset)) + 'px';
-      }
-
-      this.el.offsetHeight;
-      this.el.classList.remove('hidden');
-
-      this._lockedItemId = itemId;
-    }
 
     if (this._hideTimeout) { clearTimeout(this._hideTimeout); this._hideTimeout = null; }
+
+    // Rebuild cards
+    this.el.innerHTML = '';
+    this._mainCardEl = this._buildItemCard(item);
+    this.el.appendChild(this._mainCardEl);
+
+    // Show child cards for placed children
+    const config = FURNITURE[item.type];
+    if (config && config.slots) {
+      for (const slot of config.slots) {
+        const child = this.sceneData.getChildInSlot(itemId, slot.id);
+        if (child) {
+          const childCard = this._buildItemCard(child);
+          this.el.appendChild(childCard);
+        }
+      }
+    }
+
+    this._childSelectingEl = null;
+    this._lockPosition(itemId);
+  }
+
+  _showChildSelecting(parentId, slotId) {
+    this._childParentId = parentId;
+    this._childSlotId = slotId;
+
+    const parentItem = this.sceneData.get(parentId);
+    if (!parentItem) return;
+    const config = FURNITURE[parentItem.type];
+    if (!config || !config.allowedChildren) return;
+
+    // Remove any existing child selecting card
+    if (this._childSelectingEl) {
+      this._childSelectingEl.remove();
+      this._childSelectingEl = null;
+    }
+
+    // Build child selecting card
+    const card = document.createElement('div');
+    card.className = 'eom-card eom-card-child-selecting';
+
+    // Title
+    const title = document.createElement('div');
+    title.className = 'eom-card-title';
+    title.textContent = 'Adding Side Piece...';
+    card.appendChild(title);
+
+    // Child type grid
+    const typesEl = document.createElement('div');
+    typesEl.className = 'eom-child-types';
+
+    config.allowedChildren.forEach(childId => {
+      const childConfig = FURNITURE[childId];
+      if (!childConfig) return;
+
+      const typeEl = document.createElement('div');
+      typeEl.className = 'eom-child-type';
+
+      const placeholder = document.createElement('div');
+      placeholder.className = 'eom-child-placeholder';
+
+      const label = document.createElement('span');
+      label.className = 'eom-child-type-label';
+      label.textContent = childConfig.label;
+
+      typeEl.appendChild(placeholder);
+      typeEl.appendChild(label);
+      typeEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._onChildSelect(childId);
+      });
+      typesEl.appendChild(typeEl);
+    });
+
+    card.appendChild(typesEl);
+
+    // Cancel action
+    const actions = document.createElement('div');
+    actions.className = 'eom-card-actions';
+    const cancelBtn = document.createElement('span');
+    cancelBtn.className = 'eom-cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.state.set(STATES.SELECTED, { itemId: parentId });
+    });
+    actions.appendChild(cancelBtn);
+    card.appendChild(actions);
+
+    this._childSelectingEl = card;
+    this.el.appendChild(card);
   }
 
   hide() {
@@ -164,6 +222,52 @@ class EditingObjectMenu {
       this._hideTimeout = null;
     }, 350);
     this._itemId = null;
+  }
+
+  // ── Card builder (reusable for parent and child items) ───
+
+  _buildItemCard(item) {
+    const config = FURNITURE[item.type];
+    const card = document.createElement('div');
+    card.className = 'eom-card';
+
+    // Title bar
+    const title = document.createElement('div');
+    title.className = 'eom-card-title';
+    title.textContent = config.label;
+    card.appendChild(title);
+
+    // Options section (white bg)
+    if (config.colorOptions && config.colorOptions.rows.length > 0) {
+      const optionsEl = document.createElement('div');
+      optionsEl.className = 'eom-card-options';
+
+      config.colorOptions.rows.forEach((row, i) => {
+        if (i > 0) {
+          const divider = document.createElement('div');
+          divider.className = 'eom-divider';
+          optionsEl.appendChild(divider);
+        }
+        optionsEl.appendChild(this._buildOptionRow(row, item));
+      });
+
+      card.appendChild(optionsEl);
+    }
+
+    // Actions bar
+    const actions = document.createElement('div');
+    actions.className = 'eom-card-actions';
+    const deleteBtn = document.createElement('div');
+    deleteBtn.className = 'eom-delete';
+    deleteBtn.innerHTML = '🗑';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._onDeleteItem(item.id);
+    });
+    actions.appendChild(deleteBtn);
+    card.appendChild(actions);
+
+    return card;
   }
 
   _buildOptionRow(row, item) {
@@ -187,7 +291,6 @@ class EditingObjectMenu {
 
       const valSpan = document.createElement('span');
       valSpan.textContent = activeOpt.label;
-      valSpan.className = 'eom-option-value';
       labelEl.appendChild(valSpan);
     }
 
@@ -200,19 +303,18 @@ class EditingObjectMenu {
     for (const opt of row.options) {
       const swatch = document.createElement('div');
       swatch.className = 'eom-swatch';
+      if (opt.id === (item.colorId || row.options[0].id)) {
+        swatch.classList.add('eom-swatch-active');
+      }
 
       const circle = document.createElement('div');
       circle.className = 'eom-swatch-circle';
       circle.style.backgroundColor = '#' + opt.swatch.toString(16).padStart(6, '0');
 
-      if (opt.id === (item.colorId || row.options[0].id)) {
-        swatch.classList.add('eom-swatch-active');
-      }
-
       swatch.appendChild(circle);
       swatch.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._onColorSelect(opt.id);
+        this._onColorSelect(item.id, opt.id);
       });
       swatchGrid.appendChild(swatch);
     }
@@ -221,26 +323,105 @@ class EditingObjectMenu {
     return rowEl;
   }
 
-  _onColorSelect(colorId) {
-    if (this._itemId == null) return;
-    const item = this.sceneData.get(this._itemId);
+  // ── Actions ──────────────────────────────────────────────
+
+  _onColorSelect(itemId, colorId) {
+    const item = this.sceneData.get(itemId);
     if (!item) return;
 
-    // Update data
-    this.sceneData.update(this._itemId, { colorId });
+    this.sceneData.update(itemId, { colorId });
 
     // Rebuild mesh with new color
     this.sceneCtrl._removeMesh(item);
     this.sceneCtrl._addMesh(item);
-    this.sceneCtrl.selectItem(this._itemId);
 
-    // Refresh the menu to update active swatch
+    // Re-select to restore halo
+    if (item.parentId == null) {
+      this.sceneCtrl.selectItem(itemId);
+    }
+
+    // Refresh menu
     this.show(this._itemId);
   }
 
-  _onDelete() {
-    if (this._itemId == null) return;
-    this.sceneData.remove(this._itemId);
-    this.state.set(STATES.DEFAULT);
+  _onDeleteItem(itemId) {
+    const item = this.sceneData.get(itemId);
+    if (!item) return;
+
+    if (item.parentId == null) {
+      // Deleting parent — go to default
+      this.sceneData.remove(itemId);
+      this.state.set(STATES.DEFAULT);
+    } else {
+      // Deleting child — stay selected on parent
+      const parentId = item.parentId;
+      this.sceneData.remove(itemId);
+      this.show(parentId);
+    }
+  }
+
+  _onChildSelect(childTypeId) {
+    const parentItem = this.sceneData.get(this._childParentId);
+    if (!parentItem) return;
+
+    const parentConfig = FURNITURE[parentItem.type];
+    const slotConfig = parentConfig.slots.find(s => s.id === this._childSlotId);
+
+    // Adjust parent position so the child fits
+    if (slotConfig) {
+      this._adjustParentForChild(parentItem, childTypeId, slotConfig);
+    }
+
+    this.sceneData.add({
+      type:     childTypeId,
+      x:        0,
+      z:        0,
+      rotation: 0,
+      parentId: this._childParentId,
+      slotId:   this._childSlotId,
+    });
+
+    // Back to selected — menu rebuilds with child card
+    this.state.set(STATES.SELECTED, { itemId: this._childParentId });
+  }
+
+  /**
+   * If placing this child would be blocked, shift the parent along the
+   * slot's slide axis until the child clears.
+   */
+  _adjustParentForChild(parentItem, childType, slotConfig) {
+    const rot = parentItem.rotation || 0;
+    const cosR = Math.abs(Math.cos(rot));
+    const sinR = Math.abs(Math.sin(rot));
+
+    const childFp = FURNITURE[childType].footprint;
+    const halfW = (childFp.w * cosR + childFp.d * sinR) / 2;
+    const halfD = (childFp.w * sinR + childFp.d * cosR) / 2;
+
+    const childPos = getSlotWorldPosition(parentItem, slotConfig, childType);
+    if (!isSlotBlocked(childPos, halfW, halfD, parentItem.id, this.room, this.sceneData)) return;
+
+    const originItem = { ...parentItem, x: 0, z: 0 };
+    const slotAtOrigin = getSlotWorldPosition(originItem, slotConfig, childType);
+    const isHorizontal = Math.abs(slotAtOrigin.x) > Math.abs(slotAtOrigin.z);
+
+    const childSlidePos = isHorizontal ? childPos.x : childPos.z;
+    const roomMax = isHorizontal ? this.room.width : this.room.height;
+    const dir = childSlidePos < roomMax / 2 ? 1 : -1;
+
+    const step = 0.1;
+    for (let s = step; s < roomMax; s += step) {
+      const testParent = { ...parentItem };
+      if (isHorizontal) testParent.x = parentItem.x + dir * s;
+      else testParent.z = parentItem.z + dir * s;
+
+      const testPos = getSlotWorldPosition(testParent, slotConfig, childType);
+      if (!isSlotBlocked(testPos, halfW, halfD, parentItem.id, this.room, this.sceneData)) {
+        this.sceneData.update(parentItem.id,
+          isHorizontal ? { x: testParent.x } : { z: testParent.z }
+        );
+        return;
+      }
+    }
   }
 }
