@@ -99,7 +99,7 @@ class PlacingChildMenu {
 
     this._populateItems(parentItem.type);
 
-    // Position same as PlacingMenu: slide from nearest grid edge
+    // Position same as PlacingObjectMenu: slide from nearest grid edge
     const gridCenterScreen = this._worldToScreen(this.room.width / 2, this.room.height / 2);
     const clickScreen = this._worldToScreen(data.x, data.z);
     const fromLeft = clickScreen.x < gridCenterScreen.x;

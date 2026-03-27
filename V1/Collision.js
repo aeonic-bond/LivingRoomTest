@@ -2,7 +2,7 @@
  * Collision
  *
  * Stateless utility for footprint overlap detection.
- * Used by TransformController (soft bounce) and PlacingMenu (block placement).
+ * Used by TransformController (soft bounce) and PlacingObjectMenu (block placement).
  */
 const Collision = {
 

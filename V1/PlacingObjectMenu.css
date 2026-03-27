@@ -1,4 +1,4 @@
-/* ── PlacingMenu ─────────────────────────────────────────── */
+/* ── Shared placing menu styles (PlacingObjectMenu, PlacingChildMenu) ── */
 .placing-menu {
   position: absolute;
   z-index: 30;

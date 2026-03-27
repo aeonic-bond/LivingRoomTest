@@ -1,12 +1,12 @@
 /**
- * PlacingMenu
+ * PlacingObjectMenu
  *
  * Context menu for choosing a furniture type to place.
  * Derives items from FurnitureConfig.js.
  * Listens to StateController for enter:placing / exit:placing.
  */
 
-class PlacingMenu {
+class PlacingObjectMenu {
   /**
    * @param {HTMLElement} container
    * @param {StateController} state

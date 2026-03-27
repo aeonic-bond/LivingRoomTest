@@ -10,7 +10,7 @@ const PULSE_COLOR_BLACK   = pulseCssColor('--color-black-base');
  * PulseController
  *
  * Renders the expanding pulse effect on the grid.
- * Can be triggered by any controller (CursorController, PlacingMenu, etc.).
+ * Can be triggered by any controller (CursorController, PlacingObjectMenu, etc.).
  * Behavior changes based on state — follows cursor in DEFAULT, anchors in PLACING.
  */
 class PulseController {
