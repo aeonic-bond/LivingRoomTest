@@ -69,6 +69,11 @@
   padding: var(--spacer-300, 8px) var(--spacer-400, 12px);
   display: flex;
   align-items: center;
+  background: var(--color-white-base);
+}
+
+.eom-card-child-selecting .eom-card-actions {
+  background: transparent;
 }
 
 /* ── Divider between option rows ─────────────────────── */
