@@ -15,6 +15,11 @@ const FURNITURE = {
     buffer: 1,
     footprint: { w: 7, d: 3 },
     mesh: { type: 'box', w: 7, h: 0.35, d: 3 },
+    slots: [
+      { id: 'left-0',  side: 'left',  along: 0.5 },
+      { id: 'right-0', side: 'right', along: 0.5 },
+    ],
+    allowedChildren: ['sideTable', 'floorLamp'],
   },
   sectional: {
     id: 'sectional',
@@ -28,6 +33,11 @@ const FURNITURE = {
       minorThrust: 4,               // extends beyond hinge along minor edge
     },
     mesh: { type: 'box', w: 8, h: 0.35, d: 8 },  // placeholder until L-shape mesh
+    slots: [
+      { id: 'major-0', side: 'major', along: 0.5 },
+      { id: 'minor-0', side: 'minor', along: 0.5 },
+    ],
+    allowedChildren: ['sideTable', 'floorLamp'],
   },
   chair: {
     id: 'chair',
@@ -44,6 +54,11 @@ const FURNITURE = {
     buffer: 1,
     footprint: { w: 7, d: 3 },
     mesh: { type: 'box', w: 7, h: 0.4, d: 3 },
+    slots: [
+      { id: 'left-0',  side: 'left',  along: 0.5 },
+      { id: 'right-0', side: 'right', along: 0.5 },
+    ],
+    allowedChildren: ['sideTable', 'floorLamp'],
   },
   coffeeTable: {
     id: 'coffeeTable',
@@ -60,6 +75,26 @@ const FURNITURE = {
     buffer: 1,
     footprint: { w: 5, d: 2 },
     mesh: { type: 'box', w: 5, h: 0.3, d: 2 },
+  },
+
+  // ── Child-only types ──────────────────────────────────────
+  sideTable: {
+    id: 'sideTable',
+    label: 'Side Table',
+    affinity: 'none',
+    childOnly: true,
+    buffer: 0,
+    footprint: { w: 1.5, d: 1.5 },
+    mesh: { type: 'box', w: 1.5, h: 1.2, d: 1.5 },
+  },
+  floorLamp: {
+    id: 'floorLamp',
+    label: 'Floor Lamp',
+    affinity: 'none',
+    childOnly: true,
+    buffer: 0,
+    footprint: { w: 1, d: 1 },
+    mesh: { type: 'box', w: 1, h: 2.5, d: 1 },
   },
 };
 
