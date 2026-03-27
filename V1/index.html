@@ -169,6 +169,8 @@ sceneCtrl.bindData(sceneData);
 const slots = new SlotController(scene, ROOM, sceneData);
 const transform = new TransformController(canvas, camera, ROOM, sceneData, sceneCtrl, state, edges, corners);
 cursor.setTransform(transform);
+cursor.setCamController(cam);
+transform._camController = cam;
 const placingMenu = new PlacingObjectMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM, corners);
 const editMenu    = new EditingObjectMenu(container, state, camera, canvas, sceneData, sceneCtrl, ROOM, edges);
 
@@ -225,7 +227,7 @@ canvas.addEventListener('mousemove', (e) => {
   const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   const rc = new THREE.Raycaster();
-  rc.setFromCamera(new THREE.Vector2(mx, my), camera);
+  rc.setFromCamera(new THREE.Vector2(mx, my), cam.getCamera());
   const hit = new THREE.Vector3();
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   if (rc.ray.intersectPlane(plane, hit)) {
@@ -243,7 +245,7 @@ canvas.addEventListener('click', (e) => {
     const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(mx, my), camera);
+    raycaster.setFromCamera(new THREE.Vector2(mx, my), cam.getCamera());
     const hit = new THREE.Vector3();
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     if (raycaster.ray.intersectPlane(plane, hit)) {
@@ -260,7 +262,7 @@ canvas.addEventListener('click', (e) => {
     const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(mx, my), camera);
+    raycaster.setFromCamera(new THREE.Vector2(mx, my), cam.getCamera());
     const hit = new THREE.Vector3();
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     if (raycaster.ray.intersectPlane(plane, hit)) {
@@ -297,6 +299,13 @@ canvas.addEventListener('click', (e) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+//  PERSPECTIVE TOGGLE (P key)
+// ══════════════════════════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'p' || e.key === 'P') cam.togglePerspective();
+});
+
+// ══════════════════════════════════════════════════════════════
 //  UNDO
 // ══════════════════════════════════════════════════════════════
 const undoBtn = document.getElementById('undoBtn');
@@ -321,7 +330,7 @@ function resize() {
 function positionUndo() {
   // Position undo button 16px above the grid's top edge
   const v = new THREE.Vector3(ROOM.width / 2, 0, 0);
-  v.project(camera);
+  v.project(cam.getCamera());
   const rect = canvas.getBoundingClientRect();
   const gridTopY = (-v.y + 1) / 2 * rect.height;
   undoBtn.style.top = (gridTopY - 16 - undoBtn.offsetHeight) + 'px';
@@ -340,7 +349,7 @@ let lastFrameTime = performance.now();
   transform.update(dt);
   sceneCtrl.updateZone();
   slots.update();
-  renderer.render(scene, camera);
+  renderer.render(scene, cam.getCamera());
 })();
 </script>
 </body>

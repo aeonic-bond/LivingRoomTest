@@ -46,7 +46,7 @@ class CursorController {
     this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-    this.raycaster.setFromCamera(this.mouse, this.camera);
+    this.raycaster.setFromCamera(this.mouse, this._camController ? this._camController.getCamera() : this.camera);
     const hit = new THREE.Vector3();
     const intersects = this.raycaster.ray.intersectPlane(this.groundPlane, hit);
 
@@ -114,6 +114,10 @@ class CursorController {
   /** Wire up TransformController after both are created. */
   setTransform(transform) {
     this.transform = transform;
+  }
+
+  setCamController(camController) {
+    this._camController = camController;
   }
 
   disable() {
