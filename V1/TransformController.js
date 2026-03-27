@@ -534,23 +534,27 @@ class TransformController {
     // Check collision with other items
     const overlaps = Collision.findOverlaps(item.type, x, z, item, this.sceneData, item.id);
 
+    let targetX, targetZ;
     if (overlaps.length === 0) {
-      // No collision — update position and store as last valid
       this._lastValidX = x;
       this._lastValidZ = z;
-      this.sceneData.update(item.id, { x, z });
+      targetX = x;
+      targetZ = z;
     } else {
-      // Collision — apply soft bounds relative to last valid position
-      // Tight dampening — any movement past collision boundary gets squished
       const dx = x - this._lastValidX;
       const dz = z - this._lastValidZ;
       const collisionLimit = 0.3;
       const dampX = collisionLimit * (1 - 1 / (1 + Math.abs(dx) / collisionLimit));
       const dampZ = collisionLimit * (1 - 1 / (1 + Math.abs(dz) / collisionLimit));
-      const softX = this._lastValidX + Math.sign(dx) * dampX;
-      const softZ = this._lastValidZ + Math.sign(dz) * dampZ;
-      this.sceneData.update(item.id, { x: softX, z: softZ });
+      targetX = this._lastValidX + Math.sign(dx) * dampX;
+      targetZ = this._lastValidZ + Math.sign(dz) * dampZ;
     }
+
+    // Smooth lerp toward target
+    const lerp = 0.35;
+    const smoothX = item.x + (targetX - item.x) * lerp;
+    const smoothZ = item.z + (targetZ - item.z) * lerp;
+    this.sceneData.update(item.id, { x: smoothX, z: smoothZ });
   }
 
   _onMouseUp() {

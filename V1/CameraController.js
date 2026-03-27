@@ -76,10 +76,22 @@ class CameraController {
 
       this._onOrbitKey = (e) => {
         if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
-          this._orbitAngle -= 0.05;
+          this._orbitAngle += 0.05;
           this._updateOrbitCamera();
         } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
-          this._orbitAngle += 0.05;
+          this._orbitAngle -= 0.05;
+          this._updateOrbitCamera();
+        } else if (e.key === 'w' || e.key === 'W') {
+          this._orbitHeight = Math.min(30, this._orbitHeight + 0.5);
+          this._updateOrbitCamera();
+        } else if (e.key === 's' || e.key === 'S') {
+          this._orbitHeight = Math.max(2, this._orbitHeight - 0.5);
+          this._updateOrbitCamera();
+        } else if (e.key === 'ArrowUp') {
+          this._orbitRadius = Math.max(5, this._orbitRadius - 0.5);
+          this._updateOrbitCamera();
+        } else if (e.key === 'ArrowDown') {
+          this._orbitRadius = Math.min(40, this._orbitRadius + 0.5);
           this._updateOrbitCamera();
         }
       };
