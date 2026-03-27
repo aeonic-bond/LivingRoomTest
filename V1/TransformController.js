@@ -500,10 +500,14 @@ class TransformController {
       this.sceneData.update(item.id, { x, z });
     } else {
       // Collision — apply soft bounds relative to last valid position
+      // Tight dampening — any movement past collision boundary gets squished
       const dx = x - this._lastValidX;
       const dz = z - this._lastValidZ;
-      const softX = this._lastValidX + this.overshoot(dx, -this.overshootMax, this.overshootMax).value;
-      const softZ = this._lastValidZ + this.overshoot(dz, -this.overshootMax, this.overshootMax).value;
+      const collisionLimit = 0.3;
+      const dampX = collisionLimit * (1 - 1 / (1 + Math.abs(dx) / collisionLimit));
+      const dampZ = collisionLimit * (1 - 1 / (1 + Math.abs(dz) / collisionLimit));
+      const softX = this._lastValidX + Math.sign(dx) * dampX;
+      const softZ = this._lastValidZ + Math.sign(dz) * dampZ;
       this.sceneData.update(item.id, { x: softX, z: softZ });
     }
   }
