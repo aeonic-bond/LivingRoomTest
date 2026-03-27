@@ -189,19 +189,14 @@ class PlacingChildMenu {
   }
 
   /**
-   * If placing this child would be blocked, shift the parent along its edge
-   * until the child clears. Uses isSlotBlocked for the same check as
-   * slot indicators and child visibility.
+   * If placing this child would be blocked, shift the parent along the
+   * slot's slide axis until the child clears. Works for both edge and
+   * corner affinity parents.
    */
   _adjustParentForChild(parentItem, childType, slotConfig) {
-    if (parentItem.edgeId == null) return;
-    const edge = this.edges.getEdge(parentItem.edgeId);
-    if (!edge) return;
-
     const rot = parentItem.rotation || 0;
     const cosR = Math.abs(Math.cos(rot));
     const sinR = Math.abs(Math.sin(rot));
-    const isHorizontal = Math.abs(edge.normal.z) > Math.abs(edge.normal.x);
 
     const childFp = FURNITURE[childType].footprint;
     const halfW = (childFp.w * cosR + childFp.d * sinR) / 2;
@@ -211,16 +206,18 @@ class PlacingChildMenu {
     const childPos = getSlotWorldPosition(parentItem, slotConfig, childType);
     if (!isSlotBlocked(childPos, halfW, halfD, parentItem.id, this.room, this.sceneData)) return;
 
-    // Binary-ish search: shift parent along slide axis in small steps until child clears
-    const step = 0.1;
-    const maxShift = isHorizontal ? this.room.width : this.room.height;
+    // Determine slide axis from slot position relative to parent center
+    const originItem = { ...parentItem, x: 0, z: 0 };
+    const slotAtOrigin = getSlotWorldPosition(originItem, slotConfig, childType);
+    const isHorizontal = Math.abs(slotAtOrigin.x) > Math.abs(slotAtOrigin.z);
 
-    // Determine shift direction: move parent away from the room edge the child is near
+    // Shift direction: move parent away from the room edge the child is near
     const childSlidePos = isHorizontal ? childPos.x : childPos.z;
     const roomMax = isHorizontal ? this.room.width : this.room.height;
     const dir = childSlidePos < roomMax / 2 ? 1 : -1;
 
-    for (let s = step; s < maxShift; s += step) {
+    const step = 0.1;
+    for (let s = step; s < roomMax; s += step) {
       const testParent = { ...parentItem };
       if (isHorizontal) testParent.x = parentItem.x + dir * s;
       else testParent.z = parentItem.z + dir * s;

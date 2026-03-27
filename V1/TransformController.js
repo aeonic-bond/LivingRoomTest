@@ -425,96 +425,106 @@ class TransformController {
     let x = oX.value;
     let z = oZ.value;
 
-    // Edge slot snap — detent at the last position before a slot/child disappears
-    if (config.affinity === 'edge' && item.edgeId != null && config.slots) {
-      const edge = this.edges.getEdge(item.edgeId);
-      if (edge) {
-        const fp = config.footprint;
-        const cosR = Math.abs(Math.cos(item.rotation || 0));
-        const sinR = Math.abs(Math.sin(item.rotation || 0));
-        const isHorizontal = Math.abs(edge.normal.z) > Math.abs(edge.normal.x);
-        const parentHalf = isHorizontal
-          ? (fp.w * cosR + fp.d * sinR) / 2
-          : (fp.w * sinR + fp.d * cosR) / 2;
+    // Slot snap — detent at the last position before a slot/child disappears.
+    // Works for both edge and corner affinity parents with slots.
+    if (config.slots && config.slots.length > 0) {
+      // Determine slide axis from slot positions: find axis with most spread
+      const originItem = { ...item, x: 0, z: 0 };
+      let spreadX = 0, spreadZ = 0;
+      for (const slot of config.slots) {
+        const sp = getSlotWorldPosition(originItem, slot, null, 0.8);
+        spreadX = Math.max(spreadX, Math.abs(sp.x));
+        spreadZ = Math.max(spreadZ, Math.abs(sp.z));
+      }
+      const isHorizontal = spreadX >= spreadZ;
 
-        // Compute per-side extent from parent center to outermost slot/child edge.
-        // "low" = toward room min (left/top), "high" = toward room max (right/bottom).
-        let lowExtent = 0, highExtent = 0;
-        const rot = item.rotation || 0;
-        for (const slot of config.slots) {
-          const child = this.sceneData.getChildInSlot(item.id, slot.id);
-          let childHalf;
-          if (child) {
-            const childFp = FURNITURE[child.type].footprint;
-            childHalf = isHorizontal
-              ? (childFp.w * cosR + childFp.d * sinR) / 2
-              : (childFp.w * sinR + childFp.d * cosR) / 2;
-          } else {
-            childHalf = 0.8 / 2;
-          }
-          const extent = parentHalf + SLOT_GAP + childHalf * 2;
+      const rot = item.rotation || 0;
+      const cosR = Math.abs(Math.cos(rot));
+      const sinR = Math.abs(Math.sin(rot));
 
-          // Determine which world side this slot is on along the slide axis.
-          // Compute slot world offset from parent center (just the slide-axis component).
-          const slotPos = getSlotWorldPosition(
-            { ...item, x: 0, z: 0 }, slot, child ? child.type : null, child ? undefined : 0.8
-          );
-          const slideOffset = isHorizontal ? slotPos.x : slotPos.z;
-
-          if (slideOffset < 0) {
-            lowExtent = Math.max(lowExtent, extent);
-          } else {
-            highExtent = Math.max(highExtent, extent);
-          }
-        }
-
-        const roomMax = isHorizontal ? this.room.width : this.room.height;
-        const pos = isHorizontal ? x : z;
-
-        const slotBuffer = 0.15;
-        const snapRange  = 0.5;
-
-        const snapLow  = lowExtent + slotBuffer;
-        const snapHigh = roomMax - highExtent - slotBuffer;
-        const snapMid  = (isHorizontal ? (edge.x1 + edge.x2) : (edge.z1 + edge.z2)) / 2;
-
-        let snapped = pos;
-        let centerSnapped = false;
-        let slotSnapped = false;
-        let slotSnapPos = 0;
-        let slotSnapExtent = 0;
-        if (Math.abs(pos - snapMid) < snapRange) {
-          snapped = snapMid;
-          centerSnapped = true;
-        } else if (pos < snapLow + snapRange && pos > snapLow - snapRange) {
-          snapped = snapLow;
-          slotSnapped = true;
-          slotSnapPos = snapped;
-          slotSnapExtent = lowExtent;
-        } else if (pos > snapHigh - snapRange && pos < snapHigh + snapRange) {
-          snapped = snapHigh;
-          slotSnapped = true;
-          slotSnapPos = snapped;
-          slotSnapExtent = highExtent;
-        }
-
-        if (isHorizontal) x = snapped;
-        else z = snapped;
-
-        if (centerSnapped) {
-          this._showCenterLine(edge, snapMid, isHorizontal);
+      // Compute per-side extent from parent center to outermost slot/child edge
+      let lowExtent = 0, highExtent = 0;
+      for (const slot of config.slots) {
+        const child = this.sceneData.getChildInSlot(item.id, slot.id);
+        const slotPos = getSlotWorldPosition(
+          originItem, slot, child ? child.type : null, child ? undefined : 0.8
+        );
+        // Full extent = distance from parent center to outer edge of slot/child
+        const slideOffset = isHorizontal ? slotPos.x : slotPos.z;
+        let childHalf;
+        if (child) {
+          const childFp = FURNITURE[child.type].footprint;
+          childHalf = isHorizontal
+            ? (childFp.w * cosR + childFp.d * sinR) / 2
+            : (childFp.w * sinR + childFp.d * cosR) / 2;
         } else {
-          this._hideCenterLine();
+          childHalf = 0.8 / 2;
         }
+        const extent = Math.abs(slideOffset) + childHalf;
 
-        if (slotSnapped) {
-          const slotLinePos = slotSnapPos === snapLow
-            ? slotSnapPos - lowExtent
-            : slotSnapPos + highExtent;
-          this._showSlotLine(edge, slotLinePos, isHorizontal);
+        if (slideOffset < 0) {
+          lowExtent = Math.max(lowExtent, extent);
         } else {
-          this._hideSlotLine();
+          highExtent = Math.max(highExtent, extent);
         }
+      }
+
+      const roomMax = isHorizontal ? this.room.width : this.room.height;
+      const pos = isHorizontal ? x : z;
+
+      const slotBuffer = 0.15;
+      const snapRange  = 0.5;
+
+      const snapLow  = lowExtent + slotBuffer;
+      const snapHigh = roomMax - highExtent - slotBuffer;
+
+      // Center snap: use edge midpoint for edge affinity, room center for corner
+      let snapMid;
+      if (config.affinity === 'edge' && item.edgeId != null) {
+        const edge = this.edges.getEdge(item.edgeId);
+        snapMid = edge ? (isHorizontal ? (edge.x1 + edge.x2) : (edge.z1 + edge.z2)) / 2 : roomMax / 2;
+      } else {
+        snapMid = roomMax / 2;
+      }
+
+      let snapped = pos;
+      let centerSnapped = false;
+      let slotSnapped = false;
+      let slotSnapPos = 0;
+      if (Math.abs(pos - snapMid) < snapRange) {
+        snapped = snapMid;
+        centerSnapped = true;
+      } else if (pos < snapLow + snapRange && pos > snapLow - snapRange) {
+        snapped = snapLow;
+        slotSnapped = true;
+        slotSnapPos = snapped;
+      } else if (pos > snapHigh - snapRange && pos < snapHigh + snapRange) {
+        snapped = snapHigh;
+        slotSnapped = true;
+        slotSnapPos = snapped;
+      }
+
+      if (isHorizontal) x = snapped;
+      else z = snapped;
+
+      if (centerSnapped) {
+        // For snap line, use edge if available
+        const edge = item.edgeId != null ? this.edges.getEdge(item.edgeId) : null;
+        if (edge) this._showCenterLine(edge, snapMid, isHorizontal);
+        else this._hideCenterLine();
+      } else {
+        this._hideCenterLine();
+      }
+
+      if (slotSnapped) {
+        const slotLinePos = slotSnapPos === snapLow
+          ? slotSnapPos - lowExtent
+          : slotSnapPos + highExtent;
+        const edge = item.edgeId != null ? this.edges.getEdge(item.edgeId) : null;
+        if (edge) this._showSlotLine(edge, slotLinePos, isHorizontal);
+        else this._hideSlotLine();
+      } else {
+        this._hideSlotLine();
       }
     }
 
