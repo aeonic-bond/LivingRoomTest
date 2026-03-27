@@ -33,8 +33,8 @@ class SlotController {
    * Show slot indicators for a parent item.
    * Creates meshes for ALL slots — filled ones start hidden.
    */
-  show(parentId) {
-    if (this._parentId === parentId) return;
+  show(parentId, force) {
+    if (this._parentId === parentId && !force) return;
     this._destroy();
     this._parentId = parentId;
 
@@ -44,6 +44,7 @@ class SlotController {
     if (!config || !config.slots) return;
 
     this._slots = {};
+    this._parentRotation = item.rotation || 0;
     const size = this._slotSize;
     const fp = config.footprint;
 
@@ -56,11 +57,9 @@ class SlotController {
       const sinR = Math.abs(Math.sin(item.rotation || 0));
       const worldW = localW * cosR + localD * sinR;
       const worldD = localW * sinR + localD * cosR;
-      const half = Math.max(worldW, worldD) / 2;
-
       const pos = getSlotWorldPosition(item, slot, null, size);
       const filled = !!this.sceneData.getChildInSlot(parentId, slot.id);
-      const blocked = filled || this._isBlocked(pos, half, parentId);
+      const blocked = filled || this._isBlocked(pos, worldW / 2, worldD / 2, parentId);
 
       const mesh = this._buildSlotMesh(worldW, worldD);
       mesh.position.set(item.x, 0.003, item.z);
@@ -68,6 +67,8 @@ class SlotController {
       mesh.userData.parentId = parentId;
       mesh.userData.targetX  = pos.x;
       mesh.userData.targetZ  = pos.z;
+      mesh.userData.halfW    = worldW / 2;
+      mesh.userData.halfD    = worldD / 2;
 
       // Animation state
       mesh.userData.slideT   = 0;
@@ -134,14 +135,21 @@ class SlotController {
    */
   updatePositions(item) {
     if (!this._slots) return;
+
+    // Rotation changed (reorientation) — rebuild slots
+    const currentRotation = item.rotation || 0;
+    if (currentRotation !== this._parentRotation) {
+      this.show(item.id, true);
+      return;
+    }
+
     const config = FURNITURE[item.type];
     if (!config || !config.slots) return;
     const size = this._slotSize;
-    const half = size / 2;
 
     for (const slotId in this._slots) {
       const g = this._slots[slotId];
-      if (g.userData.filled) continue; // filled slots stay hidden
+      if (g.userData.filled) continue;
 
       const slotConfig = config.slots.find(s => s.id === slotId);
       if (!slotConfig) continue;
@@ -149,7 +157,7 @@ class SlotController {
       g.userData.targetX = pos.x;
       g.userData.targetZ = pos.z;
 
-      const shouldShow = !this._isBlocked(pos, half, item.id);
+      const shouldShow = !this._isBlocked(pos, g.userData.halfW, g.userData.halfD, item.id);
       this._setVisible(g, shouldShow);
 
       // If visible and animation done, snap to follow parent
@@ -225,7 +233,7 @@ class SlotController {
     if (!slotConfig) return;
     const size = this._slotSize;
     const pos = getSlotWorldPosition(parentItem, slotConfig, null, size);
-    if (!this._isBlocked(pos, size / 2, this._parentId)) {
+    if (!this._isBlocked(pos, g.userData.halfW, g.userData.halfD, this._parentId)) {
       g.userData.targetX = pos.x;
       g.userData.targetZ = pos.z;
       this._setVisible(g, true);
@@ -283,15 +291,15 @@ class SlotController {
     return group;
   }
 
-  _isBlocked(pos, half, parentId) {
+  _isBlocked(pos, halfW, halfD, parentId) {
     // Room bounds
-    if (pos.x - half < 0 || pos.x + half > this.room.width ||
-        pos.z - half < 0 || pos.z + half > this.room.height) return true;
+    if (pos.x - halfW < 0 || pos.x + halfW > this.room.width ||
+        pos.z - halfD < 0 || pos.z + halfD > this.room.height) return true;
 
     // Collision with placed items (skip children, skip parent)
     const slotRect = {
-      minX: pos.x - half, minZ: pos.z - half,
-      maxX: pos.x + half, maxZ: pos.z + half,
+      minX: pos.x - halfW, minZ: pos.z - halfD,
+      maxX: pos.x + halfW, maxZ: pos.z + halfD,
     };
     for (const other of this.sceneData.items) {
       if (other.id === parentId) continue;

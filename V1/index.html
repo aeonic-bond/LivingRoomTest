@@ -172,6 +172,8 @@ const placingMenu = new PlacingMenu(container, state, camera, canvas, pulse, edg
 state.on('enter:placing', (data) => {
   cursor.disable();
   pulse.startAnchored(data.x, data.z);
+  sceneCtrl.deselectItem();
+  slots.hide();
 });
 
 state.on('enter:selected', (data) => {
@@ -223,7 +225,31 @@ canvas.addEventListener('click', (e) => {
   } else if (state.is(STATES.PLACING)) {
     state.set(STATES.DEFAULT);
   } else if (state.is(STATES.SELECTED)) {
-    state.set(STATES.DEFAULT);
+    // Click empty floor → go to PLACING; click on item handled by TransformController
+    const rect = canvas.getBoundingClientRect();
+    const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(mx, my), camera);
+    const hit = new THREE.Vector3();
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    if (raycaster.ray.intersectPlane(plane, hit)) {
+      // Check if clicking on an item
+      const hitItem = transform._hitTest(hit.x, hit.z);
+      if (hitItem) {
+        // Clicking a different item → select it
+        state.set(STATES.SELECTED, { itemId: hitItem.id });
+      } else if (hit.x >= 0 && hit.x <= ROOM.width && hit.z >= 0 && hit.z <= ROOM.height) {
+        // Empty floor → placing
+        const ux = Math.floor(hit.x) + 0.5;
+        const uz = Math.floor(hit.z) + 0.5;
+        state.set(STATES.PLACING, { x: ux, z: uz });
+      } else {
+        state.set(STATES.DEFAULT);
+      }
+    } else {
+      state.set(STATES.DEFAULT);
+    }
   }
 });
 
