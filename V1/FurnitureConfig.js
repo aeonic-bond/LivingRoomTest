@@ -98,7 +98,6 @@ const FURNITURE_ORDER = [
   'couch',
   'sectional',
   'chair',
-  'chairPair',
   'coffeeTable',
   'mediaConsole',
 ];

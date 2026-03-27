@@ -5,7 +5,7 @@
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: var(--spacer-100);
   padding: var(--spacer-100);
   background: var(--color-white-base);
