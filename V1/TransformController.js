@@ -423,6 +423,71 @@ class TransformController {
     let x = oX.value;
     let z = oZ.value;
 
+    // Edge slot snap — detent at the last position before a slot disappears
+    if (config.affinity === 'edge' && item.edgeId != null && config.slots) {
+      const edge = this.edges.getEdge(item.edgeId);
+      if (edge) {
+        const slotSize = 1.5;
+        const fp = config.footprint;
+        const cosR = Math.abs(Math.cos(item.rotation || 0));
+        const sinR = Math.abs(Math.sin(item.rotation || 0));
+        const isHorizontal = Math.abs(edge.normal.z) > Math.abs(edge.normal.x);
+        // Parent half along the SLIDE axis (slots extend along local x, which rotates)
+        const parentHalf = isHorizontal
+          ? (fp.w * cosR + fp.d * sinR) / 2   // slide along x
+          : (fp.w * sinR + fp.d * cosR) / 2;  // slide along z
+        const slotExtent = parentHalf + 0.25 + slotSize; // item center to slot outer edge
+        const roomMax = isHorizontal ? this.room.width : this.room.height;
+        const pos = isHorizontal ? x : z;
+
+        const slotBuffer = 0.15;  // small breathing room so slot isn't flush with room edge
+        const snapRange  = 0.5;  // magnetic pull distance
+
+        const snapLow  = slotExtent + slotBuffer;          // slot fits with buffer at room min
+        const snapHigh = roomMax - slotExtent - slotBuffer; // slot fits with buffer at room max
+        const snapMid  = (isHorizontal ? (edge.x1 + edge.x2) : (edge.z1 + edge.z2)) / 2;
+
+        let snapped = pos;
+        let centerSnapped = false;
+        let slotSnapped = false;
+        let slotSnapPos = 0;
+        // Center snap takes priority
+        if (Math.abs(pos - snapMid) < snapRange) {
+          snapped = snapMid;
+          centerSnapped = true;
+        } else if (pos < snapLow + snapRange && pos > snapLow - snapRange) {
+          snapped = snapLow;
+          slotSnapped = true;
+          slotSnapPos = snapped;
+        } else if (pos > snapHigh - snapRange && pos < snapHigh + snapRange) {
+          snapped = snapHigh;
+          slotSnapped = true;
+          slotSnapPos = snapped;
+        }
+
+        if (isHorizontal) x = snapped;
+        else z = snapped;
+
+        // Show/hide center snap line (blue)
+        if (centerSnapped) {
+          this._showCenterLine(edge, snapMid, isHorizontal);
+        } else {
+          this._hideCenterLine();
+        }
+
+        // Show/hide slot snap line (green) at the slot that's about to disappear
+        if (slotSnapped) {
+          // Outer edge of the slot closest to the room boundary
+          const slotLinePos = slotSnapPos === snapLow
+            ? slotSnapPos - parentHalf - 0.25 - slotSize  // left/top slot outer edge
+            : slotSnapPos + parentHalf + 0.25 + slotSize; // right/bottom slot outer edge
+          this._showSlotLine(edge, slotLinePos, isHorizontal);
+        } else {
+          this._hideSlotLine();
+        }
+      }
+    }
+
     // Check collision with other items
     const overlaps = Collision.findOverlaps(item.type, x, z, item, this.sceneData, item.id);
 
@@ -457,6 +522,8 @@ class TransformController {
     this.didDrag = true;
     this.canvas.style.cursor = '';
     this.sceneCtrl.hideZone();
+    this._hideCenterLine();
+    this._hideSlotLine();
 
     // Bounce back if outside valid bounds or colliding
     if (item) {
@@ -555,5 +622,94 @@ class TransformController {
       const zone = this.corners.getZone(item.cornerId, FURNITURE[item.type].footprint);
       this.sceneCtrl.showZone(zone.minX, zone.minZ, zone.maxX, zone.maxZ);
     }
+  }
+
+  // ── Center snap line ──────────────────────────────────
+
+  _showCenterLine(edge, snapPos, isHorizontal) {
+    // Only recreate if position changed
+    if (this._centerLine && this._centerLinePos === snapPos) return;
+    this._hideCenterLine();
+    this._centerLinePos = snapPos;
+
+    const edgePos = isHorizontal
+      ? (edge.z1 + edge.z2) / 2  // edge z position
+      : (edge.x1 + edge.x2) / 2; // edge x position
+    const zoneEnd = isHorizontal
+      ? edgePos + edge.normal.z * edge.zoneDepth
+      : edgePos + edge.normal.x * edge.zoneDepth;
+
+    let pts;
+    if (isHorizontal) {
+      const z0 = Math.min(edgePos, zoneEnd);
+      const z1 = Math.max(edgePos, zoneEnd);
+      pts = [
+        new THREE.Vector3(snapPos, 0.005, z0),
+        new THREE.Vector3(snapPos, 0.005, z1),
+      ];
+    } else {
+      const x0 = Math.min(edgePos, zoneEnd);
+      const x1 = Math.max(edgePos, zoneEnd);
+      pts = [
+        new THREE.Vector3(x0, 0.005, snapPos),
+        new THREE.Vector3(x1, 0.005, snapPos),
+      ];
+    }
+
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({ color: 0x378ADD });
+    this._centerLine = new THREE.Line(geo, mat);
+    this.sceneCtrl.scene.add(this._centerLine);
+  }
+
+  _hideCenterLine() {
+    if (!this._centerLine) return;
+    this.sceneCtrl.scene.remove(this._centerLine);
+    this._centerLine = null;
+    this._centerLinePos = null;
+  }
+
+  // ── Slot snap line (green) ────────────────────────────
+
+  _showSlotLine(edge, slotPos, isHorizontal) {
+    if (this._slotLine && this._slotLinePos === slotPos) return;
+    this._hideSlotLine();
+    this._slotLinePos = slotPos;
+
+    const edgePos = isHorizontal
+      ? (edge.z1 + edge.z2) / 2
+      : (edge.x1 + edge.x2) / 2;
+    const zoneEnd = isHorizontal
+      ? edgePos + edge.normal.z * edge.zoneDepth
+      : edgePos + edge.normal.x * edge.zoneDepth;
+
+    let pts;
+    if (isHorizontal) {
+      const z0 = Math.min(edgePos, zoneEnd);
+      const z1 = Math.max(edgePos, zoneEnd);
+      pts = [
+        new THREE.Vector3(slotPos, 0.005, z0),
+        new THREE.Vector3(slotPos, 0.005, z1),
+      ];
+    } else {
+      const x0 = Math.min(edgePos, zoneEnd);
+      const x1 = Math.max(edgePos, zoneEnd);
+      pts = [
+        new THREE.Vector3(x0, 0.005, slotPos),
+        new THREE.Vector3(x1, 0.005, slotPos),
+      ];
+    }
+
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({ color: 0x88cc88 });
+    this._slotLine = new THREE.Line(geo, mat);
+    this.sceneCtrl.scene.add(this._slotLine);
+  }
+
+  _hideSlotLine() {
+    if (!this._slotLine) return;
+    this.sceneCtrl.scene.remove(this._slotLine);
+    this._slotLine = null;
+    this._slotLinePos = null;
   }
 }
