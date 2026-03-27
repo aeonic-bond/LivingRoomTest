@@ -409,12 +409,18 @@ class TransformController {
         const testOverlaps = Collision.findOverlaps(item.type, rawX, rawZ, tempItem, this.sceneData, item.id);
 
         if (testOverlaps.length === 0) {
-          // Capture relative position in old bounds
-          const oldBounds = bounds;
-          const relX = (oldBounds.maxX - oldBounds.minX) > 0
-            ? (item.x - oldBounds.minX) / (oldBounds.maxX - oldBounds.minX) : 0.5;
-          const relZ = (oldBounds.maxZ - oldBounds.minZ) > 0
-            ? (item.z - oldBounds.minZ) / (oldBounds.maxZ - oldBounds.minZ) : 0.5;
+          // Compute visual bbox shift compensation
+          const cfp = config.footprint;
+          const ch = cfp.hinge;
+          const oldSxVal = currentCorner.normal.x > 0 ? 1 : -1;
+          const oldSzVal = currentCorner.normal.z > 0 ? 1 : -1;
+          const majT = ch.w + cfp.majorThrust;
+          const minT = ch.d + cfp.minorThrust;
+
+          const oldBboxCX = (majT / 2 - ch.w / 2) * oldSxVal;
+          const oldBboxCZ = (minT / 2 - ch.d / 2) * oldSzVal;
+          const newBboxCX = (majT / 2 - ch.w / 2) * newSx;
+          const newBboxCZ = (minT / 2 - ch.d / 2) * newSz;
 
           // Apply reorientation
           this.sceneData.update(item.id, {
@@ -426,15 +432,21 @@ class TransformController {
           if (mesh) mesh.scale.set(newSx, 1, newSz);
           this._reorientCooldown = 1.0;
 
-          // Mirror position in new bounds
-          const newBounds = this._getBounds(item);
-          const mirrorX = newBounds.minX + (1 - relX) * (newBounds.maxX - newBounds.minX);
-          const mirrorZ = newBounds.minZ + (1 - relZ) * (newBounds.maxZ - newBounds.minZ);
+          // Keep visual bbox stable — compensate for hinge-to-bbox-center shift
+          let newX = item.x - (newBboxCX - oldBboxCX);
+          let newZ = item.z - (newBboxCZ - oldBboxCZ);
 
-          this.sceneData.update(item.id, { x: mirrorX, z: mirrorZ });
+          const newBounds = this._getBounds(item);
+          newX = Math.max(newBounds.minX, Math.min(newBounds.maxX, newX));
+          newZ = Math.max(newBounds.minZ, Math.min(newBounds.maxZ, newZ));
+
+          this.sceneData.update(item.id, { x: newX, z: newZ });
           bounds = newBounds;
-          this._lastValidX = mirrorX;
-          this._lastValidZ = mirrorZ;
+          this._lastValidX = newX;
+          this._lastValidZ = newZ;
+          // Update grab offset so drag continues from new position
+          this.grabOffsetX = newX - pos.x;
+          this.grabOffsetZ = newZ - pos.z;
           this._showItemZone(item);
         }
       }
