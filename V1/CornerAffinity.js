@@ -15,6 +15,7 @@ class CornerAffinity {
     this.room   = room;
     this.edges  = edgeAffinity;
     this.corners = [];
+    this.buffer = Math.ceil(Math.min(room.width, room.height) * 0.2);
     this._generateCorners();
   }
 
@@ -120,5 +121,66 @@ class CornerAffinity {
       majorDir:    nearest.edgeDirs[majorIdx],
       minorDir:    nearest.edgeDirs[minorIdx],
     };
+  }
+
+  /**
+   * Get the movement zone bounds for a corner.
+   * Zone = full room minus buffer around every other corner.
+   * @param {number} cornerId
+   * @returns {{ minX, minZ, maxX, maxZ }}
+   */
+  /**
+   * Get the movement zone bounds for a corner.
+   * Zone = the larger of the sectional bounding square or 60% of room,
+   * extending from the corner point inward.
+   * @param {number} cornerId
+   * @param {Object} [footprint] - optional L-shape footprint for size-based zone
+   * @returns {{ minX, minZ, maxX, maxZ }}
+   */
+  getZone(cornerId, footprint) {
+    const corner = this.getCorner(cornerId);
+    if (!corner) return { minX: 0, minZ: 0, maxX: this.room.width, maxZ: this.room.height };
+
+    // Compute zone size per axis
+    let zoneW, zoneD;
+    if (footprint && footprint.type === 'L') {
+      const h = footprint.hinge;
+      const totalMajor = h.w + footprint.majorThrust;
+      const totalMinor = h.d + footprint.minorThrust;
+      const boundingSquare = Math.max(totalMajor, totalMinor);
+      zoneW = Math.max(boundingSquare, this.room.width * 0.9);
+      zoneD = Math.max(boundingSquare, this.room.height * 0.9);
+    } else {
+      zoneW = this.room.width * 0.9;
+      zoneD = this.room.height * 0.9;
+    }
+
+    // Zone extends from corner point inward
+    const sx = corner.normal.x > 0 ? 1 : -1;
+    const sz = corner.normal.z > 0 ? 1 : -1;
+
+    let minX, maxX, minZ, maxZ;
+    if (sx > 0) {
+      minX = corner.x;
+      maxX = corner.x + zoneW;
+    } else {
+      minX = corner.x - zoneW;
+      maxX = corner.x;
+    }
+    if (sz > 0) {
+      minZ = corner.z;
+      maxZ = corner.z + zoneD;
+    } else {
+      minZ = corner.z - zoneD;
+      maxZ = corner.z;
+    }
+
+    // Clamp to room bounds
+    minX = Math.max(0, minX);
+    maxX = Math.min(this.room.width, maxX);
+    minZ = Math.max(0, minZ);
+    maxZ = Math.min(this.room.height, maxZ);
+
+    return { minX, minZ, maxX, maxZ };
   }
 }

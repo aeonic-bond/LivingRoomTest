@@ -65,7 +65,7 @@ class CursorController {
       const hitItem = this.transform._hitTest(hit.x, hit.z);
       if (hitItem) {
         const config = FURNITURE[hitItem.type];
-        if (config && config.affinity !== 'corner') {
+        if (config) {
           this._setCursor('grab');
           if (this.hovering) this._hide();
           return;

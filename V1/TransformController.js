@@ -14,8 +14,9 @@ class TransformController {
    * @param {SceneController} sceneCtrl
    * @param {StateController} state
    * @param {EdgeAffinity} edges
+   * @param {CornerAffinity} corners
    */
-  constructor(canvas, camera, room, sceneData, sceneCtrl, state, edges) {
+  constructor(canvas, camera, room, sceneData, sceneCtrl, state, edges, corners) {
     this.canvas    = canvas;
     this.camera    = camera;
     this.room      = room;
@@ -23,6 +24,7 @@ class TransformController {
     this.sceneCtrl = sceneCtrl;
     this.state     = state;
     this.edges     = edges;
+    this.corners   = corners;
 
     // Drag state
     this.dragging    = false;
@@ -162,17 +164,46 @@ class TransformController {
     const config = FURNITURE[item.type];
     const fp = config.footprint;
 
-    // Half extents accounting for rotation
-    const cosR = Math.abs(Math.cos(item.rotation || 0));
-    const sinR = Math.abs(Math.sin(item.rotation || 0));
-    const halfW = (fp.w * cosR + fp.d * sinR) / 2;
-    const halfD = (fp.w * sinR + fp.d * cosR) / 2;
+    let extLeft, extRight, extUp, extDown;
+    if (fp.type === 'L') {
+      // L-shape: asymmetric extents from hinge center
+      const h = fp.hinge;
+      const sx = item.sx || 1;
+      const sz = item.sz || 1;
 
-    // Room edge bounds
-    let minX = halfW;
-    let maxX = this.room.width - halfW;
-    let minZ = halfD;
-    let maxZ = this.room.height - halfD;
+      const majorTotal = h.w + fp.majorThrust;
+      const minorTotal = h.d + fp.minorThrust;
+
+      // Canonical (sx=+1): major arm goes right, hinge extends left by h.w/2
+      // Canonical (sz=+1): minor arm goes down, hinge extends up by h.d/2
+      if (sx > 0) {
+        extRight = majorTotal - h.w / 2;
+        extLeft  = h.w / 2;
+      } else {
+        extLeft  = majorTotal - h.w / 2;
+        extRight = h.w / 2;
+      }
+      if (sz > 0) {
+        extDown = minorTotal - h.d / 2;
+        extUp   = h.d / 2;
+      } else {
+        extUp   = minorTotal - h.d / 2;
+        extDown = h.d / 2;
+      }
+    } else {
+      const cosR = Math.abs(Math.cos(item.rotation || 0));
+      const sinR = Math.abs(Math.sin(item.rotation || 0));
+      const hw = (fp.w * cosR + fp.d * sinR) / 2;
+      const hd = (fp.w * sinR + fp.d * cosR) / 2;
+      extLeft = hw; extRight = hw;
+      extUp = hd; extDown = hd;
+    }
+
+    // Room edge bounds (asymmetric for L-shapes)
+    let minX = extLeft;
+    let maxX = this.room.width - extRight;
+    let minZ = extUp;
+    let maxZ = this.room.height - extDown;
 
     // Edge-affinity: tighter bounds on the depth axis
     if (config.affinity === 'edge' && item.edgeId != null) {
@@ -182,24 +213,33 @@ class TransformController {
           const edgeZ = (edge.z1 + edge.z2) / 2;
           const zoneLimit = edgeZ + edge.normal.z * edge.zoneDepth;
           if (edge.normal.z > 0) {
-            minZ = Math.max(minZ, edgeZ + halfD);
-            maxZ = Math.min(maxZ, zoneLimit - halfD);
+            minZ = Math.max(minZ, edgeZ + extUp);
+            maxZ = Math.min(maxZ, zoneLimit - extDown);
           } else {
-            minZ = Math.max(minZ, zoneLimit + halfD);
-            maxZ = Math.min(maxZ, edgeZ - halfD);
+            minZ = Math.max(minZ, zoneLimit + extUp);
+            maxZ = Math.min(maxZ, edgeZ - extDown);
           }
         } else {
           const edgeX = (edge.x1 + edge.x2) / 2;
           const zoneLimit = edgeX + edge.normal.x * edge.zoneDepth;
           if (edge.normal.x > 0) {
-            minX = Math.max(minX, edgeX + halfW);
-            maxX = Math.min(maxX, zoneLimit - halfW);
+            minX = Math.max(minX, edgeX + extLeft);
+            maxX = Math.min(maxX, zoneLimit - extRight);
           } else {
-            minX = Math.max(minX, zoneLimit + halfW);
-            maxX = Math.min(maxX, edgeX - halfW);
+            minX = Math.max(minX, zoneLimit + extLeft);
+            maxX = Math.min(maxX, edgeX - extRight);
           }
         }
       }
+    }
+
+    // Corner-affinity: zone from CornerAffinity
+    if (config.affinity === 'corner' && item.cornerId != null && this.corners) {
+      const zone = this.corners.getZone(item.cornerId, FURNITURE[item.type].footprint);
+      minX = Math.max(minX, zone.minX + extLeft);
+      maxX = Math.min(maxX, zone.maxX - extRight);
+      minZ = Math.max(minZ, zone.minZ + extUp);
+      maxZ = Math.min(maxZ, zone.maxZ - extDown);
     }
 
     return { minX, maxX, minZ, maxZ };
@@ -215,9 +255,7 @@ class TransformController {
     const item = this._hitTest(pos.x, pos.z);
     if (!item) return;
 
-    // Skip corner-affinity items for now
     const config = FURNITURE[item.type];
-    if (config.affinity === 'corner') return;
 
     // Start pending drag — don't enter TRANSFORM until mouse moves
     this._pending = true;
@@ -332,6 +370,63 @@ class TransformController {
           this._lastValidZ = newZ;
           // Update zone highlight
           this._showItemZone(item);
+          }
+        }
+      }
+    }
+
+    // Corner affinity reorientation
+    if (config.affinity === 'corner' && item.cornerId != null && this.corners && this._reorientCooldown <= 0) {
+      const rawOverX = rawX < bounds.minX ? bounds.minX - rawX :
+                       rawX > bounds.maxX ? rawX - bounds.maxX : 0;
+      const rawOverZ = rawZ < bounds.minZ ? bounds.minZ - rawZ :
+                       rawZ > bounds.maxZ ? rawZ - bounds.maxZ : 0;
+      const rawOver = Math.max(rawOverX, rawOverZ);
+
+      if (rawOver > 1.5) {
+        // Find which corner the overshoot direction points toward
+        const overDirX = rawX < bounds.minX ? -1 : rawX > bounds.maxX ? 1 : 0;
+        const overDirZ = rawZ < bounds.minZ ? -1 : rawZ > bounds.maxZ ? 1 : 0;
+
+        // Find adjacent corner in overshoot direction
+        // Adjacent = shares one edge ID with current corner
+        const currentCorner = this.corners.getCorner(item.cornerId);
+        let newCorner = null;
+        let bestDot = Infinity;
+        for (const corner of this.corners.corners) {
+          if (corner.id === item.cornerId) continue;
+          // Check adjacency: must share at least one edge
+          const shared = corner.edgeIds.some(id => currentCorner.edgeIds.includes(id));
+          if (!shared) continue;
+          // Corner normal opposes the direction you'd approach from
+          const dot = overDirX * corner.normal.x + overDirZ * corner.normal.z;
+          if (dot < bestDot) {
+            bestDot = dot;
+            newCorner = corner;
+          }
+        }
+
+        if (newCorner) {
+          const newSx = newCorner.normal.x > 0 ? 1 : -1;
+          const newSz = newCorner.normal.z > 0 ? 1 : -1;
+
+          // Check collision at new orientation
+          const tempItem = { ...item, cornerId: newCorner.id, sx: newSx, sz: newSz };
+          const testOverlaps = Collision.findOverlaps(item.type, rawX, rawZ, tempItem, this.sceneData, item.id);
+
+          if (testOverlaps.length === 0) {
+            this.sceneData.update(item.id, {
+              cornerId: newCorner.id,
+              sx: newSx,
+              sz: newSz,
+            });
+            const mesh = this.sceneCtrl.meshes[item.id];
+            if (mesh) mesh.scale.set(newSx, 1, newSz);
+            this._reorientCooldown = 1.0;
+            bounds = this._getBounds(item);
+            this._lastValidX = Math.max(bounds.minX, Math.min(bounds.maxX, rawX));
+            this._lastValidZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, rawZ));
+            this._showItemZone(item);
           }
         }
       }
@@ -456,20 +551,21 @@ class TransformController {
       if (!edge) return;
 
       if (Math.abs(edge.normal.z) > Math.abs(edge.normal.x)) {
-        // Horizontal edge
         const edgeZ = (edge.z1 + edge.z2) / 2;
         const zoneLimit = edgeZ + edge.normal.z * edge.zoneDepth;
         const z0 = Math.min(edgeZ, zoneLimit);
         const z1 = Math.max(edgeZ, zoneLimit);
         this.sceneCtrl.showZone(0, z0, this.room.width, z1);
       } else {
-        // Vertical edge
         const edgeX = (edge.x1 + edge.x2) / 2;
         const zoneLimit = edgeX + edge.normal.x * edge.zoneDepth;
         const x0 = Math.min(edgeX, zoneLimit);
         const x1 = Math.max(edgeX, zoneLimit);
         this.sceneCtrl.showZone(x0, 0, x1, this.room.height);
       }
+    } else if (config.affinity === 'corner' && item.cornerId != null && this.corners) {
+      const zone = this.corners.getZone(item.cornerId, FURNITURE[item.type].footprint);
+      this.sceneCtrl.showZone(zone.minX, zone.minZ, zone.maxX, zone.maxZ);
     }
   }
 }

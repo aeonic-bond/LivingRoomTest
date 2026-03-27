@@ -161,7 +161,7 @@ const cursor = new CursorController(scene, ROOM, canvas, camera, pulse);
 const state  = new StateController();
 const sceneData = new SceneData();
 sceneCtrl.bindData(sceneData);
-const transform = new TransformController(canvas, camera, ROOM, sceneData, sceneCtrl, state, edges);
+const transform = new TransformController(canvas, camera, ROOM, sceneData, sceneCtrl, state, edges, corners);
 cursor.setTransform(transform);
 const placingMenu = new PlacingMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM, corners);
 
