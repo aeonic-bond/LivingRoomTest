@@ -1,0 +1,123 @@
+/* ── EditingObjectMenu ─────────────────────────────────── */
+.editing-object-menu {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: var(--spacer-300, 8px);
+  background: var(--color-bg-gray-sink, #f1f1f1);
+  border: 1px solid var(--color-text-black-off, #494949);
+  width: 220px;
+  border-radius: var(--radius-base, 8px);
+  overflow: hidden;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  box-shadow: 1px 2px 2px rgba(0, 0, 0, 0.07);
+}
+
+.editing-object-menu.from-left.hidden {
+  transform: translateX(40px);
+  opacity: 0;
+}
+
+.editing-object-menu.from-right.hidden {
+  transform: translateX(-40px);
+  opacity: 0;
+}
+
+/* Title */
+.eom-title {
+  padding: var(--spacer-300, 8px) var(--spacer-400, 12px);
+  font-family: 'Roboto', sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--color-black-base, #000);
+}
+
+/* Options container */
+.eom-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-200, 4px);
+}
+
+/* Single option row (white card) */
+.eom-option-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: var(--spacer-400, 12px);
+  background: var(--color-white-base, #fff);
+  border-radius: var(--radius-small, 4px);
+}
+
+/* Row label: "Fabric · Parchment" */
+.eom-option-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-300, 8px);
+  font-family: 'Roboto', sans-serif;
+  font-size: 12px;
+  color: var(--color-text-black-off, #494949);
+}
+
+.eom-dot {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.eom-option-value {
+  /* same as label */
+}
+
+/* Swatch grid */
+.eom-swatch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacer-400, 12px);
+  align-items: center;
+}
+
+/* Individual swatch */
+.eom-swatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+}
+
+.eom-swatch-circle {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Active selection ring */
+.eom-swatch-active .eom-swatch-circle {
+  outline: 2px solid var(--color-black-base, #000);
+  outline-offset: 2px;
+}
+
+/* Actions row */
+.eom-actions {
+  display: flex;
+  align-items: center;
+  padding: var(--spacer-300, 8px) var(--spacer-400, 12px);
+}
+
+.eom-delete {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--color-text-black-off, #494949);
+  opacity: 0.6;
+}
+
+.eom-delete:hover {
+  opacity: 1;
+}

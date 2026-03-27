@@ -41,6 +41,7 @@ class SceneData {
       centerOffX:  entry.centerOffX || 0,
       centerOffZ:  entry.centerOffZ || 0,
       variant:     entry.variant || null,
+      colorId:     entry.colorId || null,
       parentId:    entry.parentId !== undefined ? entry.parentId : null,
       slotId:      entry.slotId !== undefined ? entry.slotId : null,
     };

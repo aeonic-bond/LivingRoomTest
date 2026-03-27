@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="PanelController.css">
 <link rel="stylesheet" href="PlacingObjectMenu.css">
+<link rel="stylesheet" href="EditingObjectMenu.css">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; overflow: hidden; }
@@ -106,6 +107,7 @@
 <script src="PlacingObjectMenu.js"></script>
 <script src="SlotUtils.js"></script>
 <script src="SlotController.js"></script>
+<script src="EditingObjectMenu.js"></script>
 <script src="PlacingChildMenu.js"></script>
 <script src="TransformController.js"></script>
 <script>
@@ -170,6 +172,7 @@ const transform = new TransformController(canvas, camera, ROOM, sceneData, scene
 cursor.setTransform(transform);
 const placingMenu = new PlacingObjectMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM, corners);
 const childMenu   = new PlacingChildMenu(container, state, camera, canvas, sceneData, ROOM, edges);
+const editMenu    = new EditingObjectMenu(container, state, camera, canvas, sceneData, sceneCtrl, ROOM);
 
 // ── State wiring ─────────────────────────────────────────────
 state.on('enter:placing', (data) => {

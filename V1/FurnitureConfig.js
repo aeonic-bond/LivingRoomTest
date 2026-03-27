@@ -7,6 +7,29 @@
  * footprint: { w, d } — abstract grid shape for placement, collision, pulse preview (w = width, d = depth)
  * mesh:      { type, w, h, d } — 3D rendering definition (w = width, h = height, d = depth; box primitives for now, GLTF later)
  */
+// ── Color palettes ────────────────────────────────────────
+// Shared palette definitions. Each option has:
+//   swatch: hex shown in the picker circle
+//   seat/back/arm: material colors for multi-part meshes (couch, sectional)
+//   color: single material color for simple meshes (chair, table, etc.)
+
+const PALETTE_UPHOLSTERED = [
+  { id: 'stone',     label: 'Stone',     swatch: 0xC8C0B4, seat: 0xC8C0B4, back: 0xB0A898, arm: 0xBCB4A8 },
+  { id: 'parchment', label: 'Parchment', swatch: 0xE8E0D4, seat: 0xE8E0D4, back: 0xD4CCC0, arm: 0xDDD5C9 },
+  { id: 'fog',       label: 'Fog',       swatch: 0xB8B8B8, seat: 0xB8B8B8, back: 0xA0A0A0, arm: 0xACACAC },
+  { id: 'charcoal',  label: 'Charcoal',  swatch: 0x555555, seat: 0x555555, back: 0x444444, arm: 0x4A4A4A },
+  { id: 'navy',      label: 'Navy',      swatch: 0x2B4B7E, seat: 0x2B4B7E, back: 0x1E3A6B, arm: 0x243F6E },
+  { id: 'sage',      label: 'Sage',      swatch: 0x8A9A7B, seat: 0x8A9A7B, back: 0x748A65, arm: 0x7F9270 },
+  { id: 'mustard',   label: 'Mustard',   swatch: 0xC8A84E, seat: 0xC8A84E, back: 0xB0923C, arm: 0xBC9E45 },
+];
+
+const PALETTE_WOOD = [
+  { id: 'light-wood',  label: 'Light Wood',  swatch: 0xC4A87A, color: 0xC4A87A },
+  { id: 'walnut',      label: 'Walnut',      swatch: 0x6B4226, color: 0x6B4226 },
+  { id: 'black-wood',  label: 'Black',       swatch: 0x2A2A2A, color: 0x2A2A2A },
+  { id: 'white-wood',  label: 'White',       swatch: 0xE8E4DC, color: 0xE8E4DC },
+];
+
 const FURNITURE = {
   couch: {
     id: 'couch',
@@ -20,6 +43,7 @@ const FURNITURE = {
       { id: 'right-0', side: 'right', along: 0.5 },
     ],
     allowedChildren: ['sideTable', 'floorLamp'],
+    colorOptions: { rows: [{ id: 'fabric', label: 'Fabric', options: PALETTE_UPHOLSTERED }] },
   },
   sectional: {
     id: 'sectional',
@@ -38,6 +62,7 @@ const FURNITURE = {
       { id: 'right-0', side: 'right', along: 0.5 },
     ],
     allowedChildren: ['sideTable', 'floorLamp'],
+    colorOptions: { rows: [{ id: 'fabric', label: 'Fabric', options: PALETTE_UPHOLSTERED }] },
   },
   chair: {
     id: 'chair',
@@ -46,6 +71,7 @@ const FURNITURE = {
     buffer: 1,
     footprint: { w: 3, d: 3 },
     mesh: { type: 'box', w: 3, h: 0.4, d: 3 },
+    colorOptions: { rows: [{ id: 'fabric', label: 'Fabric', options: PALETTE_UPHOLSTERED }] },
   },
   chairPair: {
     id: 'chairPair',
@@ -62,6 +88,7 @@ const FURNITURE = {
     buffer: 1,
     footprint: { w: 4, d: 2 },
     mesh: { type: 'box', w: 4, h: 0.2, d: 2 },
+    colorOptions: { rows: [{ id: 'wood', label: 'Wood', options: PALETTE_WOOD }] },
   },
   mediaConsole: {
     id: 'mediaConsole',
@@ -70,6 +97,7 @@ const FURNITURE = {
     buffer: 1,
     footprint: { w: 5, d: 2 },
     mesh: { type: 'box', w: 5, h: 0.3, d: 2 },
+    colorOptions: { rows: [{ id: 'wood', label: 'Wood', options: PALETTE_WOOD }] },
   },
 
   // ── Child-only types ──────────────────────────────────────

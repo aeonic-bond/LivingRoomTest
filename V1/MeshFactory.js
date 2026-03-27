@@ -20,17 +20,49 @@ const MeshFactory = {
   _r: 0.12,
 
   // ── Materials ───────────────────────────────────────────
-  _seatMat: null,
-  _backMat: null,
-  _armMat:  null,
-  _defaultMat: null,
 
-  _ensureMaterials() {
-    if (this._seatMat) return;
-    this._seatMat    = new THREE.MeshStandardMaterial({ color: 0x909090, roughness: 0.55 });
-    this._backMat    = new THREE.MeshStandardMaterial({ color: 0x6e6e6e, roughness: 0.5 });
-    this._armMat     = new THREE.MeshStandardMaterial({ color: 0x7a7a7a, roughness: 0.5 });
-    this._defaultMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5 });
+  // Default colors (no colorId set)
+  _defaultSeat: 0x909090,
+  _defaultBack: 0x6e6e6e,
+  _defaultArm:  0x7a7a7a,
+  _defaultColor: 0x888888,
+
+  /**
+   * Resolve material colors for an item based on its colorId.
+   * Returns { seat, back, arm, color } hex values.
+   */
+  _resolveColors(config, item) {
+    if (item.colorId && config.colorOptions) {
+      for (const row of config.colorOptions.rows) {
+        const opt = row.options.find(o => o.id === item.colorId);
+        if (opt) {
+          return {
+            seat:  opt.seat  || opt.color || this._defaultSeat,
+            back:  opt.back  || opt.color || this._defaultBack,
+            arm:   opt.arm   || opt.color || this._defaultArm,
+            color: opt.color || opt.seat  || this._defaultColor,
+          };
+        }
+      }
+    }
+    return {
+      seat:  this._defaultSeat,
+      back:  this._defaultBack,
+      arm:   this._defaultArm,
+      color: this._defaultColor,
+    };
+  },
+
+  /**
+   * Create materials from resolved colors.
+   */
+  _makeMaterials(colors) {
+    return {
+      seat:    new THREE.MeshStandardMaterial({ color: colors.seat, roughness: 0.55 }),
+      back:    new THREE.MeshStandardMaterial({ color: colors.back, roughness: 0.5 }),
+      arm:     new THREE.MeshStandardMaterial({ color: colors.arm, roughness: 0.5 }),
+      default: new THREE.MeshStandardMaterial({ color: colors.color, roughness: 0.5 }),
+    };
   },
 
   // ── Public API ──────────────────────────────────────────
@@ -42,20 +74,21 @@ const MeshFactory = {
    * @returns {THREE.Group}
    */
   build(config, item) {
-    this._ensureMaterials();
+    const colors = this._resolveColors(config, item);
+    const mats = this._makeMaterials(colors);
     const group = new THREE.Group();
 
     if (config.mesh.type === 'sectional') {
-      this._buildSectional(group, config);
+      this._buildSectional(group, config, mats);
       group.scale.set(item.sx, 1, item.sz);
     } else if (config.mesh.type === 'couch') {
-      this._buildCouch(group, config);
+      this._buildCouch(group, config, mats);
       group.rotation.y = item.rotation || 0;
     } else if (config.mesh.type === 'cylinder') {
-      this._buildCylinder(group, config);
+      this._buildCylinder(group, config, mats);
       group.rotation.y = item.rotation || 0;
     } else {
-      this._buildBox(group, config);
+      this._buildBox(group, config, mats);
       group.rotation.y = item.rotation || 0;
     }
 
@@ -65,20 +98,20 @@ const MeshFactory = {
 
   // ── Builders ────────────────────────────────────────────
 
-  _buildCylinder(group, config) {
+  _buildCylinder(group, config, mats) {
     const m = config.mesh;
     const geo = new THREE.CylinderGeometry(m.radius, m.radius, m.h, 24);
-    const mesh = new THREE.Mesh(geo, this._defaultMat);
+    const mesh = new THREE.Mesh(geo, mats.default);
     mesh.position.y = m.h / 2;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
   },
 
-  _buildBox(group, config) {
+  _buildBox(group, config, mats) {
     const m = config.mesh;
     const geo = new THREE.BoxGeometry(m.w, m.h, m.d);
-    const mesh = new THREE.Mesh(geo, this._defaultMat);
+    const mesh = new THREE.Mesh(geo, mats.default);
     mesh.position.y = m.h / 2;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -89,7 +122,7 @@ const MeshFactory = {
    * Stylized couch: back cushion, seat cushions, armrests.
    * Local space: back = -Z (wall side), front = +Z (room side).
    */
-  _buildCouch(group, config) {
+  _buildCouch(group, config, mats) {
     const fp = config.footprint;
     const W = fp.w;
     const D = fp.d;
@@ -115,7 +148,7 @@ const MeshFactory = {
 
     // Back cushion — between arms, at -Z edge (wall side)
     addPart(
-      this._roundedBoxGeo(innerW, backD, backH, r), this._backMat,
+      this._roundedBoxGeo(innerW, backD, backH, r), mats.back,
       0, -halfD + backD / 2
     );
 
@@ -125,15 +158,15 @@ const MeshFactory = {
     for (let i = 0; i < numCushions; i++) {
       const cx = startX + cushionW / 2 + i * (cushionW + gap);
       addPart(
-        this._roundedBoxGeo(cushionW, seatD, seatH, r), this._seatMat,
+        this._roundedBoxGeo(cushionW, seatD, seatH, r), mats.seat,
         cx, seatZ
       );
     }
 
     // Armrests — full depth on left/right edges
     const armR = Math.min(r, armW / 3);
-    addPart(this._roundedBoxGeo(armW, D, armH, armR), this._armMat, -halfW + armW / 2, 0);
-    addPart(this._roundedBoxGeo(armW, D, armH, armR), this._armMat, halfW - armW / 2, 0);
+    addPart(this._roundedBoxGeo(armW, D, armH, armR), mats.arm, -halfW + armW / 2, 0);
+    addPart(this._roundedBoxGeo(armW, D, armH, armR), mats.arm, halfW - armW / 2, 0);
   },
 
   /**
@@ -141,7 +174,7 @@ const MeshFactory = {
    * Local space: hinge center at origin.
    * Major arm extends along +X, minor arm along +Z.
    */
-  _buildSectional(group, config) {
+  _buildSectional(group, config, mats) {
     const fp = config.footprint;
     const h = fp.hinge;
     const majorW = h.w + fp.majorThrust;
@@ -165,12 +198,12 @@ const MeshFactory = {
     // ── Armrests ─────────────────────────────────────────────
     // Left armrest at hinge side (major arm depth only)
     addPart(
-      this._roundedBoxGeo(armW, h.d, armH, armR), this._armMat,
+      this._roundedBoxGeo(armW, h.d, armH, armR), mats.arm,
       offX + armW / 2, offZ + h.d / 2
     );
     // Right armrest at far +X end of major arm
     addPart(
-      this._roundedBoxGeo(armW, h.d, armH, armR), this._armMat,
+      this._roundedBoxGeo(armW, h.d, armH, armR), mats.arm,
       offX + majorW - armW / 2, offZ + h.d / 2
     );
 
@@ -178,7 +211,7 @@ const MeshFactory = {
     // Back cushion between the two armrests
     const majorBackW = majorW - 2 * armW;
     addPart(
-      this._roundedBoxGeo(majorBackW, backD, backH, r), this._backMat,
+      this._roundedBoxGeo(majorBackW, backD, backH, r), mats.back,
       offX + armW + majorBackW / 2,
       offZ + backD / 2
     );
@@ -192,7 +225,7 @@ const MeshFactory = {
     for (let i = 0; i < numMajorCushions; i++) {
       const cx = offX + h.w + i * (majorCushionW + gap) + majorCushionW / 2;
       addPart(
-        this._roundedBoxGeo(majorCushionW, majorSeatD, seatH, r), this._seatMat,
+        this._roundedBoxGeo(majorCushionW, majorSeatD, seatH, r), mats.seat,
         cx, majorSeatZ
       );
     }
@@ -201,7 +234,7 @@ const MeshFactory = {
     const hingeSeatW = h.w - armW;
     const hingeSeatD = h.d - backD;
     addPart(
-      this._roundedBoxGeo(hingeSeatW, hingeSeatD, seatH, r), this._seatMat,
+      this._roundedBoxGeo(hingeSeatW, hingeSeatD, seatH, r), mats.seat,
       offX + armW + hingeSeatW / 2, offZ + backD + hingeSeatD / 2
     );
 
@@ -210,7 +243,7 @@ const MeshFactory = {
     const chaiseSeatW = h.w;
     const chaiseSeatD = fp.minorThrust;
     addPart(
-      this._roundedBoxGeo(chaiseSeatW, chaiseSeatD, seatH, r), this._seatMat,
+      this._roundedBoxGeo(chaiseSeatW, chaiseSeatD, seatH, r), mats.seat,
       offX + chaiseSeatW / 2,
       offZ + h.d + chaiseSeatD / 2
     );
