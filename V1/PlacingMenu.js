@@ -175,8 +175,21 @@ class PlacingMenu {
       const result = this.corners.getNearestCorner(data.x, data.z);
       if (!result) return;
 
-      const { majorDir, minorDir } = result;
       const h = fp.hinge;
+
+      // The mesh always renders majorThrust along X and minorThrust along Z,
+      // then mirrors with sx/sz. Match pulse to the same convention:
+      // whichever edgeDir has an X component gets majorThrust,
+      // whichever has a Z component gets minorThrust.
+      const { majorDir: rawMajor, minorDir: rawMinor } = result;
+      let xDir, zDir;
+      if (Math.abs(rawMajor.x) > 0) {
+        xDir = rawMajor;
+        zDir = rawMinor;
+      } else {
+        xDir = rawMinor;
+        zDir = rawMajor;
+      }
 
       // Hinge block at origin (with buffer on all sides)
       const hingeBlock = {
@@ -189,20 +202,20 @@ class PlacingMenu {
       const hx0 = -buf, hz0 = -buf;
       const hx1 = h.w + buf, hz1 = h.d + buf;
 
-      // Major arm: starts flush at hinge edge, extends thrust + buffer outward
+      // Major arm along X direction (majorThrust)
       const majorBlock = {
-        x: majorDir.x > 0 ? hx1 : majorDir.x < 0 ? hx0 - (fp.majorThrust + buf) : hx0,
-        z: majorDir.z > 0 ? hz1 : majorDir.z < 0 ? hz0 - (fp.majorThrust + buf) : hz0,
-        w: Math.abs(majorDir.x) > 0 ? fp.majorThrust + buf : hx1 - hx0,
-        d: Math.abs(majorDir.z) > 0 ? fp.majorThrust + buf : hz1 - hz0,
+        x: xDir.x > 0 ? hx1 : hx0 - (fp.majorThrust + buf),
+        z: hz0,
+        w: fp.majorThrust + buf,
+        d: hz1 - hz0,
       };
 
-      // Minor arm: starts flush at hinge edge, extends thrust + buffer outward
+      // Minor arm along Z direction (minorThrust)
       const minorBlock = {
-        x: minorDir.x > 0 ? hx1 : minorDir.x < 0 ? hx0 - (fp.minorThrust + buf) : hx0,
-        z: minorDir.z > 0 ? hz1 : minorDir.z < 0 ? hz0 - (fp.minorThrust + buf) : hz0,
-        w: Math.abs(minorDir.x) > 0 ? fp.minorThrust + buf : hx1 - hx0,
-        d: Math.abs(minorDir.z) > 0 ? fp.minorThrust + buf : hz1 - hz0,
+        x: hx0,
+        z: zDir.z > 0 ? hz1 : hz0 - (fp.minorThrust + buf),
+        w: hx1 - hx0,
+        d: fp.minorThrust + buf,
       };
 
       const blocks = [hingeBlock, majorBlock, minorBlock];
