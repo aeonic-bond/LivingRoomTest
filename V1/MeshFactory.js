@@ -84,6 +84,9 @@ const MeshFactory = {
     } else if (config.mesh.type === 'couch') {
       this._buildCouch(group, config, mats);
       group.rotation.y = item.rotation || 0;
+    } else if (config.mesh.type === 'roundedBox') {
+      this._buildRoundedBox(group, config, mats);
+      group.rotation.y = item.rotation || 0;
     } else if (config.mesh.type === 'cylinder') {
       this._buildCylinder(group, config, mats);
       group.rotation.y = item.rotation || 0;
@@ -97,6 +100,15 @@ const MeshFactory = {
   },
 
   // ── Builders ────────────────────────────────────────────
+
+  _buildRoundedBox(group, config, mats) {
+    const m = config.mesh;
+    const geo = this._roundedBoxGeo(m.w, m.d, m.h, m.r);
+    const mesh = new THREE.Mesh(geo, mats.default);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  },
 
   _buildCylinder(group, config, mats) {
     const m = config.mesh;

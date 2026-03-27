@@ -108,7 +108,7 @@ const FURNITURE = {
     childOnly: true,
     buffer: 0,
     footprint: { w: 1.5, d: 1.5 },
-    mesh: { type: 'box', w: 1.5, h: 1.2, d: 1.5 },
+    mesh: { type: 'roundedBox', w: 1.5, h: 1.2, d: 1.5, r: 0.15 },
     colorOptions: { rows: [{ id: 'wood', label: 'Wood', options: PALETTE_WOOD }] },
   },
   floorLamp: {

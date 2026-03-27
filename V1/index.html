@@ -214,6 +214,23 @@ sceneData.on('update', (item) => {
   }
 });
 
+// Slot hover detection during SELECTED state
+canvas.addEventListener('mousemove', (e) => {
+  if (!state.is(STATES.SELECTED)) { slots.updateHover(-999, -999); return; }
+  const rect = canvas.getBoundingClientRect();
+  const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  const rc = new THREE.Raycaster();
+  rc.setFromCamera(new THREE.Vector2(mx, my), camera);
+  const hit = new THREE.Vector3();
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  if (rc.ray.intersectPlane(plane, hit)) {
+    slots.updateHover(hit.x, hit.z);
+  } else {
+    slots.updateHover(-999, -999);
+  }
+});
+
 canvas.addEventListener('click', (e) => {
   if (transform.didDrag) { transform.didDrag = false; return; }
 

@@ -477,7 +477,7 @@ class TransformController {
       const pos = isHorizontal ? x : z;
 
       const slotBuffer = 0.15;
-      const snapRange  = 0.5;
+      const snapRange  = 0.25;
 
       const snapLow  = lowExtent + slotBuffer;
       const snapHigh = roomMax - highExtent - slotBuffer;

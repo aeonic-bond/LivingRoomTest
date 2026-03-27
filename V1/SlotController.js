@@ -21,6 +21,7 @@ class SlotController {
     this._parentId = null;
     this._slotSize = 0.8;
     this._animSpeed = 0.03;
+    this._hoveredSlotId = null;
 
     // React to child add/remove
     this.sceneData.on('add', (item) => this._onChildAdd(item));
@@ -167,6 +168,61 @@ class SlotController {
    */
   get parentId() {
     return this._parentId;
+  }
+
+  /**
+   * Update hover state from a world position. Call from mouse move.
+   */
+  updateHover(x, z) {
+    if (!this._slots) { this._setHoveredSlot(null); return; }
+    const radius = this._slotSize / 2;
+    for (const slotId in this._slots) {
+      const g = this._slots[slotId];
+      if (!g.visible || g.userData.hiding || g.userData.filled) continue;
+      const dx = x - g.position.x;
+      const dz = z - g.position.z;
+      if (dx * dx + dz * dz <= radius * radius) {
+        this._setHoveredSlot(slotId);
+        return;
+      }
+    }
+    this._setHoveredSlot(null);
+  }
+
+  _setHoveredSlot(slotId) {
+    if (this._hoveredSlotId === slotId) return;
+
+    // Un-hover previous
+    if (this._hoveredSlotId && this._slots && this._slots[this._hoveredSlotId]) {
+      const g = this._slots[this._hoveredSlotId];
+      this._setSlotOpacity(g, false);
+    }
+
+    this._hoveredSlotId = slotId;
+
+    // Hover new
+    if (slotId && this._slots && this._slots[slotId]) {
+      const g = this._slots[slotId];
+      this._setSlotOpacity(g, true);
+    }
+  }
+
+  _setSlotOpacity(group, hovered) {
+    group.traverse((child) => {
+      if (child.isMesh && child.material && child.material.transparent) {
+        child.material.opacity = hovered ? 0.35 : 0.1;
+      }
+      if (child.isLine) {
+        if (child.material.isDashedLineMaterial) {
+          // Border circle
+          child.material.opacity = hovered ? 1.0 : 0.6;
+          child.material.transparent = true;
+        } else {
+          // Plus cross
+          child.material.color.set(hovered ? 0x000000 : 0xd9d9d9);
+        }
+      }
+    });
   }
 
   /**

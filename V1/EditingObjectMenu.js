@@ -162,10 +162,23 @@ class EditingObjectMenu {
     const card = document.createElement('div');
     card.className = 'eom-card eom-card-child-selecting';
 
-    // Title
+    // Title with X close button
     const title = document.createElement('div');
     title.className = 'eom-card-title';
-    title.textContent = 'Adding Side Piece...';
+
+    const titleText = document.createElement('span');
+    titleText.textContent = 'Adding Side Piece...';
+    title.appendChild(titleText);
+
+    const closeBtn = document.createElement('div');
+    closeBtn.className = 'eom-close';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.state.set(STATES.SELECTED, { itemId: parentId });
+    });
+    title.appendChild(closeBtn);
+
     card.appendChild(title);
 
     // Child type grid
@@ -179,6 +192,9 @@ class EditingObjectMenu {
       const typeEl = document.createElement('div');
       typeEl.className = 'eom-child-type';
 
+      const inner = document.createElement('div');
+      inner.className = 'eom-child-type-inner';
+
       const placeholder = document.createElement('div');
       placeholder.className = 'eom-child-placeholder';
 
@@ -186,8 +202,9 @@ class EditingObjectMenu {
       label.className = 'eom-child-type-label';
       label.textContent = childConfig.label;
 
-      typeEl.appendChild(placeholder);
-      typeEl.appendChild(label);
+      inner.appendChild(placeholder);
+      inner.appendChild(label);
+      typeEl.appendChild(inner);
       typeEl.addEventListener('click', (e) => {
         e.stopPropagation();
         this._onChildSelect(childId);
@@ -196,19 +213,6 @@ class EditingObjectMenu {
     });
 
     card.appendChild(typesEl);
-
-    // Cancel action
-    const actions = document.createElement('div');
-    actions.className = 'eom-card-actions';
-    const cancelBtn = document.createElement('span');
-    cancelBtn.className = 'eom-cancel';
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.state.set(STATES.SELECTED, { itemId: parentId });
-    });
-    actions.appendChild(cancelBtn);
-    card.appendChild(actions);
 
     this._childSelectingEl = card;
     this.el.appendChild(card);
@@ -235,11 +239,47 @@ class EditingObjectMenu {
     const isHiddenChild = item.parentId != null &&
       this.sceneCtrl.meshes[item.id] && !this.sceneCtrl.meshes[item.id].visible;
 
-    // Title bar
+    // Title bar with overflow menu
     const title = document.createElement('div');
     title.className = 'eom-card-title';
     if (isHiddenChild) title.classList.add('eom-card-title-disabled');
-    title.textContent = config.label;
+
+    const titleText = document.createElement('span');
+    titleText.textContent = config.label;
+    title.appendChild(titleText);
+
+    const moreWrap = document.createElement('div');
+    moreWrap.className = 'eom-more-wrap';
+
+    const moreBtn = document.createElement('span');
+    moreBtn.className = 'eom-more';
+    moreBtn.textContent = '···';
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'eom-dropdown';
+    dropdown.style.display = 'none';
+
+    const deleteOpt = document.createElement('div');
+    deleteOpt.className = 'eom-dropdown-item';
+    deleteOpt.textContent = 'Delete';
+    deleteOpt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._onDeleteItem(item.id);
+    });
+    dropdown.appendChild(deleteOpt);
+
+    moreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.style.display !== 'none';
+      // Close any other open dropdowns
+      this.el.querySelectorAll('.eom-dropdown').forEach(d => d.style.display = 'none');
+      dropdown.style.display = isOpen ? 'none' : 'flex';
+    });
+
+    moreWrap.appendChild(moreBtn);
+    moreWrap.appendChild(dropdown);
+    title.appendChild(moreWrap);
+
     card.appendChild(title);
 
     // Options section (white bg)
@@ -258,19 +298,6 @@ class EditingObjectMenu {
 
       card.appendChild(optionsEl);
     }
-
-    // Actions bar
-    const actions = document.createElement('div');
-    actions.className = 'eom-card-actions';
-    const deleteBtn = document.createElement('div');
-    deleteBtn.className = 'eom-delete';
-    deleteBtn.innerHTML = '🗑';
-    deleteBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._onDeleteItem(item.id);
-    });
-    actions.appendChild(deleteBtn);
-    card.appendChild(actions);
 
     return card;
   }
