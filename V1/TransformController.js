@@ -478,14 +478,15 @@ class TransformController {
       const snapLow  = lowExtent + slotBuffer;
       const snapHigh = roomMax - highExtent - slotBuffer;
 
-      // Center snap: use edge midpoint for edge affinity, room center for corner
-      let snapMid;
-      if (config.affinity === 'edge' && item.edgeId != null) {
-        const edge = this.edges.getEdge(item.edgeId);
-        snapMid = edge ? (isHorizontal ? (edge.x1 + edge.x2) : (edge.z1 + edge.z2)) / 2 : roomMax / 2;
-      } else {
-        snapMid = roomMax / 2;
-      }
+      // Resolve the relevant edge for snap lines:
+      // edge affinity → edgeId, corner affinity → majorEdgeId
+      const snapEdgeId = item.edgeId != null ? item.edgeId : item.majorEdgeId;
+      const snapEdge = snapEdgeId != null ? this.edges.getEdge(snapEdgeId) : null;
+
+      // Center snap: use edge midpoint
+      const snapMid = snapEdge
+        ? (isHorizontal ? (snapEdge.x1 + snapEdge.x2) : (snapEdge.z1 + snapEdge.z2)) / 2
+        : roomMax / 2;
 
       let snapped = pos;
       let centerSnapped = false;
@@ -507,22 +508,17 @@ class TransformController {
       if (isHorizontal) x = snapped;
       else z = snapped;
 
-      if (centerSnapped) {
-        // For snap line, use edge if available
-        const edge = item.edgeId != null ? this.edges.getEdge(item.edgeId) : null;
-        if (edge) this._showCenterLine(edge, snapMid, isHorizontal);
-        else this._hideCenterLine();
+      if (centerSnapped && snapEdge) {
+        this._showCenterLine(snapEdge, snapMid, isHorizontal);
       } else {
         this._hideCenterLine();
       }
 
-      if (slotSnapped) {
+      if (slotSnapped && snapEdge) {
         const slotLinePos = slotSnapPos === snapLow
           ? slotSnapPos - lowExtent
           : slotSnapPos + highExtent;
-        const edge = item.edgeId != null ? this.edges.getEdge(item.edgeId) : null;
-        if (edge) this._showSlotLine(edge, slotLinePos, isHorizontal);
-        else this._hideSlotLine();
+        this._showSlotLine(snapEdge, slotLinePos, isHorizontal);
       } else {
         this._hideSlotLine();
       }
@@ -668,6 +664,34 @@ class TransformController {
     }
   }
 
+  /**
+   * Build snap line points spanning an edge's zone depth.
+   */
+  _snapLinePts(edge, snapPos, isHorizontal) {
+    const edgePos = isHorizontal
+      ? (edge.z1 + edge.z2) / 2
+      : (edge.x1 + edge.x2) / 2;
+    const zoneEnd = isHorizontal
+      ? edgePos + edge.normal.z * edge.zoneDepth
+      : edgePos + edge.normal.x * edge.zoneDepth;
+
+    if (isHorizontal) {
+      const z0 = Math.min(edgePos, zoneEnd);
+      const z1 = Math.max(edgePos, zoneEnd);
+      return [
+        new THREE.Vector3(snapPos, 0.005, z0),
+        new THREE.Vector3(snapPos, 0.005, z1),
+      ];
+    } else {
+      const x0 = Math.min(edgePos, zoneEnd);
+      const x1 = Math.max(edgePos, zoneEnd);
+      return [
+        new THREE.Vector3(x0, 0.005, snapPos),
+        new THREE.Vector3(x1, 0.005, snapPos),
+      ];
+    }
+  }
+
   // ── Center snap line ──────────────────────────────────
 
   _showCenterLine(edge, snapPos, isHorizontal) {
@@ -676,30 +700,7 @@ class TransformController {
     this._centerLinePos = snapPos;
     this._centerLineEdge = edge.id;
 
-    const edgePos = isHorizontal
-      ? (edge.z1 + edge.z2) / 2  // edge z position
-      : (edge.x1 + edge.x2) / 2; // edge x position
-    const zoneEnd = isHorizontal
-      ? edgePos + edge.normal.z * edge.zoneDepth
-      : edgePos + edge.normal.x * edge.zoneDepth;
-
-    let pts;
-    if (isHorizontal) {
-      const z0 = Math.min(edgePos, zoneEnd);
-      const z1 = Math.max(edgePos, zoneEnd);
-      pts = [
-        new THREE.Vector3(snapPos, 0.005, z0),
-        new THREE.Vector3(snapPos, 0.005, z1),
-      ];
-    } else {
-      const x0 = Math.min(edgePos, zoneEnd);
-      const x1 = Math.max(edgePos, zoneEnd);
-      pts = [
-        new THREE.Vector3(x0, 0.005, snapPos),
-        new THREE.Vector3(x1, 0.005, snapPos),
-      ];
-    }
-
+    const pts = this._snapLinePts(edge, snapPos, isHorizontal);
     const geo = new THREE.BufferGeometry().setFromPoints(pts);
     const mat = new THREE.LineBasicMaterial({ color: 0x378ADD });
     this._centerLine = new THREE.Line(geo, mat);
@@ -722,29 +723,8 @@ class TransformController {
     this._slotLinePos = slotPos;
     this._slotLineEdge = edge.id;
 
-    const edgePos = isHorizontal
-      ? (edge.z1 + edge.z2) / 2
-      : (edge.x1 + edge.x2) / 2;
-    const zoneEnd = isHorizontal
-      ? edgePos + edge.normal.z * edge.zoneDepth
-      : edgePos + edge.normal.x * edge.zoneDepth;
-
-    let pts;
-    if (isHorizontal) {
-      const z0 = Math.min(edgePos, zoneEnd);
-      const z1 = Math.max(edgePos, zoneEnd);
-      pts = [
-        new THREE.Vector3(slotPos, 0.005, z0),
-        new THREE.Vector3(slotPos, 0.005, z1),
-      ];
-    } else {
-      const x0 = Math.min(edgePos, zoneEnd);
-      const x1 = Math.max(edgePos, zoneEnd);
-      pts = [
-        new THREE.Vector3(x0, 0.005, slotPos),
-        new THREE.Vector3(x1, 0.005, slotPos),
-      ];
-    }
+    const pts = this._snapLinePts(edge, slotPos, isHorizontal);
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
 
     const geo = new THREE.BufferGeometry().setFromPoints(pts);
     const mat = new THREE.LineBasicMaterial({ color: 0x88cc88 });
