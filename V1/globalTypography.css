@@ -1,0 +1,8 @@
+:root {
+  /* ── Fonts ───────────────────────────────────────────────── */
+  --font-body: "Roboto", sans-serif;
+
+  /* ── Type tokens ─────────────────────────────────────────── */
+  --type-label-small: normal 400 12px / 1 var(--font-body);
+  --type-label-base:  normal 400 15px / 1 var(--font-body);
+}
