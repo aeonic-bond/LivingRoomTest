@@ -209,8 +209,8 @@
 }
 
 .eom-child-placeholder {
-  width: 100%;
-  aspect-ratio: 1;
+  width: 80px;
+  height: 80px;
   background: var(--color-divider-gray-base);
 }
 
