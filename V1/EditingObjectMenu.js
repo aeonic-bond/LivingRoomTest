@@ -235,9 +235,8 @@ class EditingObjectMenu {
     const card = document.createElement('div');
     card.className = 'eom-card';
 
-    // Check if child mesh is currently hidden (blocked)
-    const isHiddenChild = item.parentId != null &&
-      this.sceneCtrl.meshes[item.id] && !this.sceneCtrl.meshes[item.id].visible;
+    // Check if child is ghosted (blocked by collision/OOB)
+    const isHiddenChild = item.parentId != null && item.ghosted;
 
     // Title bar with overflow menu
     const title = document.createElement('div');

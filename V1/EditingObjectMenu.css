@@ -41,10 +41,8 @@
 
 /* ── Card title bar ──────────────────────────────────── */
 .eom-card-title {
-  padding: var(--spacer-200, 4px) var(--spacer-300, 8px);
-  font-family: 'Roboto', sans-serif;
-  font-size: 15px;
-  font-weight: 400;
+  padding: var(--spacer-300) var(--spacer-300);
+  font: var(--type-label-base);
   color: var(--color-text-black-off, #494949);
   display: flex;
   align-items: center;
@@ -81,8 +79,7 @@
 
 .eom-dropdown-item {
   padding: var(--spacer-300, 8px) var(--spacer-400, 12px);
-  font-family: 'Roboto', sans-serif;
-  font-size: 12px;
+  font: var(--type-label-small);
   color: var(--color-black-base);
   cursor: pointer;
   white-space: nowrap;
@@ -138,8 +135,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacer-300, 8px);
-  font-family: 'Roboto', sans-serif;
-  font-size: 12px;
+  font: var(--type-label-small);
   color: var(--color-text-black-off, #494949);
 }
 
@@ -215,8 +211,7 @@
 }
 
 .eom-child-type-label {
-  font-family: 'Roboto', sans-serif;
-  font-size: 12px;
+  font: var(--type-label-small);
   color: var(--color-black-base, #000);
   white-space: nowrap;
 }

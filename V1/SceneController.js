@@ -293,14 +293,29 @@ class SceneController {
       const halfD = (childFp.w * sinR + childFp.d * cosR) / 2;
 
       const blocked = isSlotBlocked(pos, halfW, halfD, parentItem.id, this.room, this.sceneData);
+      child.ghosted = blocked;
 
       const childGroup = this.meshes[child.id];
       if (childGroup) {
         childGroup.position.set(pos.x, 0, pos.z);
         childGroup.rotation.y = rot;
-        childGroup.visible = !blocked;
+        childGroup.visible = true;
+        this._setGhosted(childGroup, blocked);
       }
     }
+  }
+
+  /**
+   * Set ghosted visual state on a mesh group (reduced opacity).
+   */
+  _setGhosted(group, ghosted) {
+    const opacity = ghosted ? 0.25 : 1.0;
+    group.traverse((child) => {
+      if (child.isMesh && child.material) {
+        child.material.transparent = true;
+        child.material.opacity = opacity;
+      }
+    });
   }
 
 }
