@@ -1,9 +1,10 @@
 /**
  * SlotUtils
  *
- * Computes world positions for child slots on parent furniture.
- * Slot positions are derived from parent transform + footprint + slot config.
- * Gap between parent edge and child center = parentHalf + childHalf + SLOT_GAP.
+ * Computes world positions for slot groups on parent furniture.
+ * A slot group represents one side of a parent that can accept children.
+ * Width is derived dynamically from the largest allowed child footprint.
+ * Depth matches the parent's depth on that side.
  *
  * Supports rect and L-shape footprints.
  */
@@ -11,28 +12,83 @@
 const SLOT_GAP = 0.25; // ft edge-to-edge spacing
 
 /**
- * Compute the world position of a slot on a parent item.
+ * Get the max child width from a parent's allowedChildren list.
+ * Used to size slot group indicators.
+ * @param {Object} parentConfig - FURNITURE config entry
+ * @returns {number}
+ */
+function getMaxChildWidth(parentConfig) {
+  if (!parentConfig.allowedChildren) return 1;
+  let maxW = 0;
+  for (const childTypeId of parentConfig.allowedChildren) {
+    const childConfig = FURNITURE[childTypeId];
+    if (childConfig && childConfig.footprint) {
+      maxW = Math.max(maxW, childConfig.footprint.w, childConfig.footprint.d);
+    }
+  }
+  return maxW || 1;
+}
+
+/**
+ * Get the max child depth from a parent's allowedChildren list.
+ * Used to size the active sub-slot on hover.
+ * @param {Object} parentConfig - FURNITURE config entry
+ * @returns {number}
+ */
+function getMaxChildDepth(parentConfig) {
+  if (!parentConfig.allowedChildren) return 1;
+  let maxD = 0;
+  for (const childTypeId of parentConfig.allowedChildren) {
+    const childConfig = FURNITURE[childTypeId];
+    if (childConfig && childConfig.footprint) {
+      maxD = Math.max(maxD, childConfig.footprint.d);
+    }
+  }
+  return maxD || 1;
+}
+
+/**
+ * Compute the world position of a slot group on a parent item.
+ * The slot group sits centered along the parent's side edge.
+ * When subSlot is specified, offsets to the front or back sub-slot center.
+ *
  * @param {Object} parentItem - SceneData item (x, z, rotation, sx, sz)
- * @param {Object} slotConfig - from FurnitureConfig slots array ({ id, side, along })
- * @param {string} [childType] - child furniture type id (for size-aware offset), or null for slot indicator
- * @param {number} [indicatorSize] - when childType is null, use this as the indicator square size
+ * @param {Object} groupConfig - from FurnitureConfig slotGroups array ({ id, side })
+ * @param {string} [childType] - child furniture type id (for size-aware offset), or null for indicator
+ * @param {number} [indicatorWidth] - when childType is null, use this as the indicator width
+ * @param {string} [subSlot] - 'front' or 'back' to offset to sub-slot center
  * @returns {{ x: number, z: number }}
  */
-function getSlotWorldPosition(parentItem, slotConfig, childType, indicatorSize) {
+function getSlotGroupWorldPosition(parentItem, groupConfig, childType, indicatorWidth, subSlot) {
   const parentConfig = FURNITURE[parentItem.type];
   const fp = parentConfig.footprint;
-  let childFp;
+
+  let childW;
   if (childType) {
-    childFp = FURNITURE[childType].footprint;
-  } else if (indicatorSize) {
-    childFp = { w: indicatorSize, d: indicatorSize };
+    childW = FURNITURE[childType].footprint.w;
+  } else if (indicatorWidth) {
+    childW = indicatorWidth;
   } else {
-    childFp = { w: 0, d: 0 };
+    childW = getMaxChildWidth(parentConfig);
   }
 
   const local = fp.type === 'L'
-    ? _lShapeSlotLocal(fp, slotConfig, childFp)
-    : _rectSlotLocal(fp, slotConfig, childFp);
+    ? _lShapeGroupLocal(fp, groupConfig, childW)
+    : _rectGroupLocal(fp, groupConfig, childW);
+
+  // Apply sub-slot offset along the depth axis
+  if (subSlot) {
+    const parentDepth = getSlotGroupDepth(parentConfig, groupConfig.side);
+    const childD = getMaxChildDepth(parentConfig);
+    // Offset from group center to sub-slot center
+    const offset = (parentDepth / 2) - (childD / 2);
+    // Depth axis: left/right = Z, front/back = X
+    if (groupConfig.side === 'left' || groupConfig.side === 'right') {
+      local.z += subSlot === 'back' ? offset : -offset;
+    } else {
+      local.x += subSlot === 'back' ? offset : -offset;
+    }
+  }
 
   // Apply scale mirroring (L-shapes use sx/sz for corner orientation)
   local.x *= (parentItem.sx || 1);
@@ -51,65 +107,60 @@ function getSlotWorldPosition(parentItem, slotConfig, childType, indicatorSize) 
 }
 
 /**
- * Compute local offset for a slot on a rect footprint.
- * Parent center is at origin. Side determines which edge.
+ * Get the depth of the parent along a given side.
+ * This determines the slot group indicator's depth dimension.
+ * @param {Object} parentConfig - FURNITURE config entry
+ * @param {string} side - 'left', 'right', 'front', 'back'
+ * @returns {number}
  */
-function _rectSlotLocal(fp, slot, childFp) {
+function getSlotGroupDepth(parentConfig, side) {
+  const fp = parentConfig.footprint;
+  if (fp.type === 'L') {
+    // For L-shapes, left/right sides run along hinge depth
+    if (side === 'left' || side === 'right') return fp.hinge.d;
+    return fp.hinge.w;
+  }
+  // Rect: left/right run along depth, front/back run along width
+  if (side === 'left' || side === 'right') return fp.d;
+  return fp.w;
+}
+
+/**
+ * Compute local offset for a slot group on a rect footprint.
+ * Centered along the side edge.
+ */
+function _rectGroupLocal(fp, group, childW) {
   const halfW = fp.w / 2;
   const halfD = fp.d / 2;
-  // along: 0 = front of side, 1 = back; 0.5 = centered along depth
-  const alongZ = (slot.along - 0.5) * fp.d;
 
-  switch (slot.side) {
+  switch (group.side) {
     case 'left':
-      return {
-        x: -halfW - SLOT_GAP - childFp.w / 2,
-        z: alongZ,
-      };
+      return { x: -halfW - SLOT_GAP - childW / 2, z: 0 };
     case 'right':
-      return {
-        x: halfW + SLOT_GAP + childFp.w / 2,
-        z: alongZ,
-      };
+      return { x: halfW + SLOT_GAP + childW / 2, z: 0 };
     case 'front':
-      return {
-        x: (slot.along - 0.5) * fp.w,
-        z: -halfD - SLOT_GAP - childFp.d / 2,
-      };
+      return { x: 0, z: -halfD - SLOT_GAP - childW / 2 };
     case 'back':
-      return {
-        x: (slot.along - 0.5) * fp.w,
-        z: halfD + SLOT_GAP + childFp.d / 2,
-      };
+      return { x: 0, z: halfD + SLOT_GAP + childW / 2 };
     default:
       return { x: 0, z: 0 };
   }
 }
 
 /**
- * Compute local offset for a slot on an L-shape footprint.
- * Slots on left/right are relative to the major arm.
- * Hinge center is at origin.
+ * Compute local offset for a slot group on an L-shape footprint.
+ * Centered along hinge depth.
  */
-function _lShapeSlotLocal(fp, slot, childFp) {
+function _lShapeGroupLocal(fp, group, childW) {
   const h = fp.hinge;
   const majorW = h.w + fp.majorThrust;
   const offX = -h.w / 2;
 
-  // along: 0.5 = centered along major arm depth (h.d)
-  const alongZ = (slot.along - 0.5) * h.d;
-
-  switch (slot.side) {
+  switch (group.side) {
     case 'left':
-      return {
-        x: offX - SLOT_GAP - childFp.w / 2,
-        z: alongZ,
-      };
+      return { x: offX - SLOT_GAP - childW / 2, z: 0 };
     case 'right':
-      return {
-        x: offX + majorW + SLOT_GAP + childFp.w / 2,
-        z: alongZ,
-      };
+      return { x: offX + majorW + SLOT_GAP + childW / 2, z: 0 };
     default:
       return { x: 0, z: 0 };
   }
@@ -150,16 +201,16 @@ function isSlotBlocked(pos, halfW, halfD, parentId, room, sceneData) {
 }
 
 /**
- * Get all slot world positions for a parent item.
+ * Get all slot group world positions for a parent item.
  * @param {Object} parentItem - SceneData item
- * @returns {Array<{ slotId: string, x: number, z: number }>}
+ * @returns {Array<{ groupId: string, x: number, z: number }>}
  */
-function getAllSlotPositions(parentItem) {
+function getAllSlotGroupPositions(parentItem) {
   const config = FURNITURE[parentItem.type];
-  if (!config || !config.slots) return [];
+  if (!config || !config.slotGroups) return [];
 
-  return config.slots.map(slot => {
-    const pos = getSlotWorldPosition(parentItem, slot, null);
-    return { slotId: slot.id, x: pos.x, z: pos.z };
+  return config.slotGroups.map(group => {
+    const pos = getSlotGroupWorldPosition(parentItem, group, null);
+    return { groupId: group.id, x: pos.x, z: pos.z };
   });
 }

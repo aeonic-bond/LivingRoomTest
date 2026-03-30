@@ -246,7 +246,133 @@ class TransformController {
       maxZ = Math.min(maxZ, zone.maxZ - extDown);
     }
 
+    // Child zone: constrained to sub-slot region along parent's side
+    if (item.parentId != null && item.slotGroupId != null) {
+      const parentItem = this.sceneData.get(item.parentId);
+      if (parentItem) {
+        const parentConfig = FURNITURE[parentItem.type];
+        const groupConfig = parentConfig.slotGroups && parentConfig.slotGroups.find(s => s.id === item.slotGroupId);
+        if (groupConfig) {
+          const childZone = this._getChildZone(item, parentItem, parentConfig, groupConfig);
+          minX = Math.max(minX, childZone.minX);
+          maxX = Math.min(maxX, childZone.maxX);
+          minZ = Math.max(minZ, childZone.minZ);
+          maxZ = Math.min(maxZ, childZone.maxZ);
+        }
+      }
+    }
+
     return { minX, maxX, minZ, maxZ };
+  }
+
+  /**
+   * Compute the movement zone for a child item within its sub-slot.
+   * Width axis (perpendicular to side): locked to slot group center.
+   * Depth axis (along side): constrained to sub-slot region, minus child half-depth.
+   */
+  _getChildZone(item, parentItem, parentConfig, groupConfig) {
+    const parentRot = parentItem.rotation || 0;
+    const cos = Math.cos(parentRot);
+    const sin = Math.sin(parentRot);
+
+    const childFp = FURNITURE[item.type].footprint;
+    const childHalfD = childFp.d / 2;
+
+    const parentDepth = getSlotGroupDepth(parentConfig, groupConfig.side);
+    const maxChildD = getMaxChildDepth(parentConfig);
+    const subSlot = item.subSlot || 'back';
+
+    // Sub-slot region in parent-local depth space (centered at 0 = group center)
+    // back sub-slot: from midpoint to +parentDepth/2
+    // front sub-slot: from -parentDepth/2 to midpoint
+    const midGap = SUB_SLOT_GAP / 2;
+    let depthMin, depthMax;
+    if (subSlot === 'back') {
+      depthMin = midGap;
+      depthMax = parentDepth / 2;
+    } else {
+      depthMin = -parentDepth / 2;
+      depthMax = -midGap;
+    }
+
+    // Inset by child half-depth so the child stays within the sub-slot
+    depthMin += childHalfD;
+    depthMax -= childHalfD;
+
+    // Get group center position in world space (no subSlot offset)
+    const childW = getMaxChildWidth(parentConfig);
+    const groupCenter = getSlotGroupWorldPosition(parentItem, groupConfig, null, childW);
+
+    // Width axis position (locked)
+    const widthPos = getSlotGroupWorldPosition(parentItem, groupConfig, item.type, null, subSlot);
+
+    // Depth axis: left/right sides = local Z, front/back sides = local X
+    const side = groupConfig.side;
+    const isLeftRight = (side === 'left' || side === 'right');
+
+    // Convert depth range to world coordinates
+    // Depth axis in local space maps to a world direction based on parent rotation and side
+    if (isLeftRight) {
+      // Local Z → world direction (sin, cos) rotated by parent
+      const worldDepthDirX = -sin; // dWorldX/dLocalZ
+      const worldDepthDirZ = cos;  // dWorldZ/dLocalZ
+
+      // Project depth bounds into world X/Z
+      const centerAlongDepthX = groupCenter.x;
+      const centerAlongDepthZ = groupCenter.z;
+
+      // Width axis is locked: X position = slot position
+      const lockedX = widthPos.x;
+      const lockedZ = widthPos.z;
+
+      if (Math.abs(worldDepthDirZ) > Math.abs(worldDepthDirX)) {
+        // Depth axis mostly aligns with world Z
+        const sign = worldDepthDirZ > 0 ? 1 : -1;
+        return {
+          minX: lockedX,
+          maxX: lockedX,
+          minZ: centerAlongDepthZ + depthMin * sign,
+          maxZ: centerAlongDepthZ + depthMax * sign,
+        };
+      } else {
+        // Depth axis mostly aligns with world X
+        const sign = worldDepthDirX > 0 ? 1 : -1;
+        return {
+          minX: centerAlongDepthX + depthMin * sign,
+          maxX: centerAlongDepthX + depthMax * sign,
+          minZ: lockedZ,
+          maxZ: lockedZ,
+        };
+      }
+    } else {
+      // front/back sides: local X is depth axis
+      const worldDepthDirX = cos;
+      const worldDepthDirZ = sin;
+
+      const centerAlongDepthX = groupCenter.x;
+      const centerAlongDepthZ = groupCenter.z;
+
+      const lockedX = widthPos.x;
+      const lockedZ = widthPos.z;
+
+      if (Math.abs(worldDepthDirX) > Math.abs(worldDepthDirZ)) {
+        const sign = worldDepthDirX > 0 ? 1 : -1;
+        return {
+          minX: centerAlongDepthX + depthMin * sign,
+          maxX: centerAlongDepthX + depthMax * sign,
+          minZ: lockedZ,
+          maxZ: lockedZ,
+        };
+      } else {
+        const sign = worldDepthDirZ > 0 ? 1 : -1;
+        return {
+          minX: lockedX,
+          maxX: lockedX,
+          minZ: centerAlongDepthZ + depthMin * sign,
+          maxZ: centerAlongDepthZ + depthMax * sign,
+        };
+      }
+    }
   }
 
   _onMouseDown(e) {
@@ -423,20 +549,56 @@ class TransformController {
           }
         }
       }
+
+      // Child: flip subSlot (front ↔ back) on overshoot
+      if (item.parentId != null && item.subSlot) {
+        const newSubSlot = item.subSlot === 'front' ? 'back' : 'front';
+
+        // Check sibling collision in target sub-slot
+        const siblings = this.sceneData.getChildrenInSlotGroup(item.parentId, item.slotGroupId);
+        const siblingInTarget = siblings.find(s => s.id !== item.id && s.subSlot === newSubSlot);
+
+        if (!siblingInTarget) {
+          this.sceneData.update(item.id, { subSlot: newSubSlot });
+          this._reorientCooldown = 1.0;
+
+          bounds = this._getBounds(item);
+
+          // Snap to new sub-slot center
+          const parentItem = this.sceneData.get(item.parentId);
+          const parentConfig = FURNITURE[parentItem.type];
+          const groupConfig = parentConfig.slotGroups.find(s => s.id === item.slotGroupId);
+          const newPos = getSlotGroupWorldPosition(parentItem, groupConfig, item.type, null, newSubSlot);
+
+          const clampedX = Math.max(bounds.minX, Math.min(bounds.maxX, newPos.x));
+          const clampedZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, newPos.z));
+
+          this.sceneData.update(item.id, { x: clampedX, z: clampedZ });
+          this.sceneCtrl._updateMesh(item);
+
+          this._lastValidX = clampedX;
+          this._lastValidZ = clampedZ;
+          this.grabOffsetX = clampedX - pos.x;
+          this.grabOffsetZ = clampedZ - pos.z;
+          this._showItemZone(item);
+          return;
+        }
+      }
     }
 
     // Apply dampened overshoot position
     let x = oX.value;
     let z = oZ.value;
 
-    // Slot snap — detent at the last position before a slot/child disappears.
-    // Works for both edge and corner affinity parents with slots.
-    if (config.slots && config.slots.length > 0) {
-      // Determine slide axis from slot positions: find axis with most spread
+    // Slot snap — detent at the last position before a slot group/child disappears.
+    // Works for both edge and corner affinity parents with slotGroups.
+    if (config.slotGroups && config.slotGroups.length > 0) {
+      // Determine slide axis from slot group positions: find axis with most spread
       const originItem = { ...item, x: 0, z: 0 };
+      const childW = getMaxChildWidth(config);
       let spreadX = 0, spreadZ = 0;
-      for (const slot of config.slots) {
-        const sp = getSlotWorldPosition(originItem, slot, null, 0.8);
+      for (const group of config.slotGroups) {
+        const sp = getSlotGroupWorldPosition(originItem, group, null, childW);
         spreadX = Math.max(spreadX, Math.abs(sp.x));
         spreadZ = Math.max(spreadZ, Math.abs(sp.z));
       }
@@ -446,25 +608,24 @@ class TransformController {
       const cosR = Math.abs(Math.cos(rot));
       const sinR = Math.abs(Math.sin(rot));
 
-      // Compute per-side extent from parent center to outermost slot/child edge
+      // Compute per-side extent from parent center to outermost group/child edge
       let lowExtent = 0, highExtent = 0;
-      for (const slot of config.slots) {
-        const child = this.sceneData.getChildInSlot(item.id, slot.id);
-        const slotPos = getSlotWorldPosition(
-          originItem, slot, child ? child.type : null, child ? undefined : 0.8
-        );
-        // Full extent = distance from parent center to outer edge of slot/child
-        const slideOffset = isHorizontal ? slotPos.x : slotPos.z;
-        let childHalf;
-        if (child) {
-          const childFp = FURNITURE[child.type].footprint;
-          childHalf = isHorizontal
-            ? (childFp.w * cosR + childFp.d * sinR) / 2
-            : (childFp.w * sinR + childFp.d * cosR) / 2;
-        } else {
-          childHalf = 0.8 / 2;
+      for (const group of config.slotGroups) {
+        const children = this.sceneData.getChildrenInSlotGroup(item.id, group.id);
+        // Use largest child in group, or indicator size
+        let maxChildHalf = childW / 2;
+        const groupPos = getSlotGroupWorldPosition(originItem, group, null, childW);
+        if (children.length > 0) {
+          for (const child of children) {
+            const childFp = FURNITURE[child.type].footprint;
+            const half = isHorizontal
+              ? (childFp.w * cosR + childFp.d * sinR) / 2
+              : (childFp.w * sinR + childFp.d * cosR) / 2;
+            maxChildHalf = Math.max(maxChildHalf, half);
+          }
         }
-        const extent = Math.abs(slideOffset) + childHalf;
+        const slideOffset = isHorizontal ? groupPos.x : groupPos.z;
+        const extent = Math.abs(slideOffset) + maxChildHalf;
 
         if (slideOffset < 0) {
           lowExtent = Math.max(lowExtent, extent);
