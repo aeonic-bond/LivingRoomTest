@@ -156,10 +156,10 @@ function isSlotBlocked(pos, halfW, halfD, parentId, room, sceneData) {
  */
 function getAllSlotPositions(parentItem) {
   const config = FURNITURE[parentItem.type];
-  if (!config || !config.slots) return [];
+  if (!config || !config.slotGroups) return [];
 
-  return config.slots.map(slot => {
-    const pos = getSlotWorldPosition(parentItem, slot, null);
-    return { slotId: slot.id, x: pos.x, z: pos.z };
+  return config.slotGroups.map(sg => {
+    const pos = getSlotWorldPosition(parentItem, sg, null);
+    return { slotGroupId: sg.id, x: pos.x, z: pos.z };
   });
 }

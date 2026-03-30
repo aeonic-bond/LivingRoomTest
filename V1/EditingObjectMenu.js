@@ -23,7 +23,7 @@ class EditingObjectMenu {
 
     this._itemId = null;
     this._lockedItemId = null;
-    this._childSlotId = null;
+    this._childSlotGroupId = null;
     this._childParentId = null;
 
     this._buildDOM();
@@ -52,7 +52,7 @@ class EditingObjectMenu {
       if (data && data.itemId != null) this.show(data.itemId);
     });
     this.state.on('enter:placing_child', (data) => {
-      if (data) this._showChildSelecting(data.parentId, data.slotId);
+      if (data) this._showChildSelecting(data.parentId, data.slotGroupId);
     });
     this.state.on('enter:default', () => {
       this.hide();
@@ -129,9 +129,9 @@ class EditingObjectMenu {
 
     // Show child cards for placed children
     const config = FURNITURE[item.type];
-    if (config && config.slots) {
-      for (const slot of config.slots) {
-        const child = this.sceneData.getChildInSlot(itemId, slot.id);
+    if (config && config.slotGroups) {
+      for (const sg of config.slotGroups) {
+        const child = this.sceneData.getChildInSlotGroup(itemId, sg.id);
         if (child) {
           const childCard = this._buildItemCard(child);
           this.el.appendChild(childCard);
@@ -143,9 +143,9 @@ class EditingObjectMenu {
     this._lockPosition(itemId);
   }
 
-  _showChildSelecting(parentId, slotId) {
+  _showChildSelecting(parentId, slotGroupId) {
     this._childParentId = parentId;
-    this._childSlotId = slotId;
+    this._childSlotGroupId = slotGroupId;
 
     const parentItem = this.sceneData.get(parentId);
     if (!parentItem) return;
@@ -396,7 +396,7 @@ class EditingObjectMenu {
     if (!parentItem) return;
 
     const parentConfig = FURNITURE[parentItem.type];
-    const slotConfig = parentConfig.slots.find(s => s.id === this._childSlotId);
+    const slotConfig = parentConfig.slotGroups.find(s => s.id === this._childSlotGroupId);
 
     // Adjust parent position so the child fits
     if (slotConfig) {
@@ -409,7 +409,7 @@ class EditingObjectMenu {
       z:        0,
       rotation: 0,
       parentId: this._childParentId,
-      slotId:   this._childSlotId,
+      slotGroupId: this._childSlotGroupId,
     });
 
     // Back to selected — menu rebuilds with child card

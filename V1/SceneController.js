@@ -231,7 +231,7 @@ class SceneController {
       const parentItem = this.sceneData.get(item.parentId);
       if (parentItem) {
         const parentConfig = FURNITURE[parentItem.type];
-        const slotConfig = parentConfig.slots.find(s => s.id === item.slotId);
+        const slotConfig = parentConfig.slotGroups.find(s => s.id === item.slotGroupId);
         if (slotConfig) {
           const pos = getSlotWorldPosition(parentItem, slotConfig, item.type);
           item.x = pos.x;
@@ -272,14 +272,14 @@ class SceneController {
     if (children.length === 0) return;
 
     const parentConfig = FURNITURE[parentItem.type];
-    if (!parentConfig || !parentConfig.slots) return;
+    if (!parentConfig || !parentConfig.slotGroups) return;
 
     const rot = parentItem.rotation || 0;
     const cosR = Math.abs(Math.cos(rot));
     const sinR = Math.abs(Math.sin(rot));
 
     for (const child of children) {
-      const slotConfig = parentConfig.slots.find(s => s.id === child.slotId);
+      const slotConfig = parentConfig.slotGroups.find(s => s.id === child.slotGroupId);
       if (!slotConfig) continue;
 
       const pos = getSlotWorldPosition(parentItem, slotConfig, child.type);

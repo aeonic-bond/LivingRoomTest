@@ -17,9 +17,8 @@ class SlotController {
     this.room      = room;
     this.sceneData = sceneData;
 
-    this._slots    = null;  // Map: slotId → { mesh, state }
+    this._slots    = null;  // Map: slotGroupId → mesh
     this._parentId = null;
-    this._slotSize = 0.8;
     this._animSpeed = 0.03;
     this._hoveredSlotId = null;
     this._lockedHover = false;
@@ -43,28 +42,33 @@ class SlotController {
     const item = this.sceneData.get(parentId);
     if (!item) return;
     const config = FURNITURE[item.type];
-    if (!config || !config.slots) return;
+    if (!config || !config.slotGroups) return;
 
     this._slots = {};
     this._parentRotation = item.rotation || 0;
-    const size = this._slotSize;
     const fp = config.footprint;
 
-    config.slots.forEach(slot => {
-      // Circle indicator: rotation-invariant, same size in all directions
-      const half = size / 2;
-      const pos = getSlotWorldPosition(item, slot, null, size);
-      const filled = !!this.sceneData.getChildInSlot(parentId, slot.id);
-      const blocked = filled || this._isBlocked(pos, half, half, parentId);
+    // Derive indicator width from largest allowed child
+    const childW = this._getMaxChildWidth(config);
 
-      const mesh = this._buildSlotMesh(size);
+    config.slotGroups.forEach(slotGroup => {
+      // Depth = parent's extent on this side
+      const depth = this._getSideDepth(fp, slotGroup.side);
+      const halfW = childW / 2;
+      const halfD = depth / 2;
+
+      const pos = getSlotWorldPosition(item, slotGroup, null, childW);
+      const filled = !!this.sceneData.getChildInSlotGroup(parentId, slotGroup.id);
+      const blocked = filled || this._isBlocked(pos, halfW, halfD, parentId);
+
+      const mesh = this._buildSlotGroupMesh(childW, depth, item.rotation, slotGroup.side);
       mesh.position.set(item.x, 0.003, item.z);
-      mesh.userData.slotId   = slot.id;
+      mesh.userData.slotGroupId = slotGroup.id;
       mesh.userData.parentId = parentId;
       mesh.userData.targetX  = pos.x;
       mesh.userData.targetZ  = pos.z;
-      mesh.userData.halfW    = half;
-      mesh.userData.halfD    = half;
+      mesh.userData.halfW    = halfW;
+      mesh.userData.halfD    = halfD;
 
       // Animation state
       mesh.userData.slideT   = 0;
@@ -73,7 +77,7 @@ class SlotController {
       mesh.visible = !blocked;
 
       this.scene.add(mesh);
-      this._slots[slot.id] = mesh;
+      this._slots[slotGroup.id] = mesh;
     });
   }
 
@@ -140,16 +144,16 @@ class SlotController {
     }
 
     const config = FURNITURE[item.type];
-    if (!config || !config.slots) return;
-    const size = this._slotSize;
+    if (!config || !config.slotGroups) return;
+    const childW = this._getMaxChildWidth(config);
 
     for (const slotId in this._slots) {
       const g = this._slots[slotId];
       if (g.userData.filled) continue;
 
-      const slotConfig = config.slots.find(s => s.id === slotId);
+      const slotConfig = config.slotGroups.find(s => s.id === slotId);
       if (!slotConfig) continue;
-      const pos = getSlotWorldPosition(item, slotConfig, null, size);
+      const pos = getSlotWorldPosition(item, slotConfig, null, childW);
       g.userData.targetX = pos.x;
       g.userData.targetZ = pos.z;
 
@@ -193,13 +197,10 @@ class SlotController {
   updateHover(x, z) {
     if (this._lockedHover) return;
     if (!this._slots) { this._setHoveredSlot(null); return; }
-    const radius = this._slotSize / 2;
     for (const slotId in this._slots) {
       const g = this._slots[slotId];
       if (!g.visible || g.userData.hiding || g.userData.filled) continue;
-      const dx = x - g.position.x;
-      const dz = z - g.position.z;
-      if (dx * dx + dz * dz <= radius * radius) {
+      if (this._hitTestRect(g, x, z)) {
         this._setHoveredSlot(slotId);
         return;
       }
@@ -249,14 +250,11 @@ class SlotController {
    */
   hitTest(x, z) {
     if (!this._slots) return null;
-    const radius = this._slotSize / 2;
     for (const slotId in this._slots) {
       const g = this._slots[slotId];
       if (!g.visible || g.userData.hiding || g.userData.filled) continue;
-      const dx = x - g.position.x;
-      const dz = z - g.position.z;
-      if (dx * dx + dz * dz <= radius * radius) {
-        return { parentId: g.userData.parentId, slotId: g.userData.slotId };
+      if (this._hitTestRect(g, x, z)) {
+        return { parentId: g.userData.parentId, slotGroupId: g.userData.slotGroupId };
       }
     }
     return null;
@@ -300,7 +298,7 @@ class SlotController {
 
   _onChildAdd(item) {
     if (!this._slots || item.parentId !== this._parentId) return;
-    const g = this._slots[item.slotId];
+    const g = this._slots[item.slotGroupId];
     if (!g) return;
     g.userData.filled = true;
     this._setVisible(g, false);
@@ -308,7 +306,7 @@ class SlotController {
 
   _onChildRemove(item) {
     if (!this._slots || item.parentId !== this._parentId) return;
-    const g = this._slots[item.slotId];
+    const g = this._slots[item.slotGroupId];
     if (!g) return;
     g.userData.filled = false;
 
@@ -316,10 +314,10 @@ class SlotController {
     const parentItem = this.sceneData.get(this._parentId);
     if (!parentItem) return;
     const config = FURNITURE[parentItem.type];
-    const slotConfig = config.slots.find(s => s.id === item.slotId);
+    const slotConfig = config.slotGroups.find(s => s.id === item.slotGroupId);
     if (!slotConfig) return;
-    const size = this._slotSize;
-    const pos = getSlotWorldPosition(parentItem, slotConfig, null, size);
+    const childW = this._getMaxChildWidth(config);
+    const pos = getSlotWorldPosition(parentItem, slotConfig, null, childW);
     if (!this._isBlocked(pos, g.userData.halfW, g.userData.halfD, this._parentId)) {
       g.userData.targetX = pos.x;
       g.userData.targetZ = pos.z;
@@ -337,52 +335,110 @@ class SlotController {
     this._slots = null;
   }
 
-  _buildSlotMesh(diameter) {
+  /**
+   * Build a rounded-rect slot group mesh.
+   * Width = max child width, depth = parent side depth.
+   * Rotated to align with the parent's side.
+   */
+  _buildSlotGroupMesh(w, d, parentRotation, side) {
     const group = new THREE.Group();
-    const radius = diameter / 2;
+    const r = Math.min(w, d, 0.5) * 0.4; // corner radius, capped
 
-    // Green fill circle
-    const fillGeo = new THREE.CircleGeometry(radius, 32);
+    // Rounded rect shape (centered at origin in XY, laid flat)
+    const shape = new THREE.Shape();
+    const hw = w / 2, hh = d / 2;
+    shape.moveTo(-hw + r, -hh);
+    shape.lineTo(hw - r, -hh);
+    shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
+    shape.lineTo(hw, hh - r);
+    shape.quadraticCurveTo(hw, hh, hw - r, hh);
+    shape.lineTo(-hw + r, hh);
+    shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
+    shape.lineTo(-hw, -hh + r);
+    shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+
+    // Fill (50% opacity as per Figma)
+    const fillGeo = new THREE.ShapeGeometry(shape);
     const fillMat = new THREE.MeshBasicMaterial({
-      color: 0x88cc88,
+      color: 0x38725C,
       transparent: true,
-      opacity: 0.1,
+      opacity: 0.05,
       depthWrite: false,
     });
     const fillMesh = new THREE.Mesh(fillGeo, fillMat);
     fillMesh.rotation.x = -Math.PI / 2;
     group.add(fillMesh);
 
-    // Dashed circle border
-    const segments = 64;
-    const circlePts = [];
-    for (let i = 0; i <= segments; i++) {
-      const theta = (i / segments) * Math.PI * 2;
-      circlePts.push(new THREE.Vector3(
-        Math.cos(theta) * radius,
-        0.001,
-        Math.sin(theta) * radius
-      ));
-    }
-    const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
+    // Dashed border
+    const borderPts = shape.getPoints(32);
+    const border3D = borderPts.map(p => new THREE.Vector3(p.x, 0.001, -p.y));
+    border3D.push(border3D[0].clone()); // close loop
+    const borderGeo = new THREE.BufferGeometry().setFromPoints(border3D);
     const dashedMat = new THREE.LineDashedMaterial({
-      color: 0x88cc88,
+      color: 0x38725C,
       dashSize: 0.08,
       gapSize: 0.06,
+      transparent: true,
+      opacity: 0.5,
     });
-    const circleLine = new THREE.Line(circleGeo, dashedMat);
-    circleLine.computeLineDistances();
-    group.add(circleLine);
+    const borderLine = new THREE.Line(borderGeo, dashedMat);
+    borderLine.computeLineDistances();
+    group.add(borderLine);
 
     // Plus cross
     const plusSize = 0.22;
-    const plusMat = new THREE.LineBasicMaterial({ color: 0xd9d9d9 });
-    const hPts = [new THREE.Vector3(-plusSize / 2, 0, 0), new THREE.Vector3(plusSize / 2, 0, 0)];
+    const plusMat = new THREE.LineBasicMaterial({
+      color: 0x38725C,
+      transparent: true,
+      opacity: 0.5,
+    });
+    const hPts = [new THREE.Vector3(-plusSize / 2, 0.002, 0), new THREE.Vector3(plusSize / 2, 0.002, 0)];
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(hPts), plusMat));
-    const vPts = [new THREE.Vector3(0, 0, -plusSize / 2), new THREE.Vector3(0, 0, plusSize / 2)];
+    const vPts = [new THREE.Vector3(0, 0.002, -plusSize / 2), new THREE.Vector3(0, 0.002, plusSize / 2)];
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(vPts), plusMat));
 
+    // Rotate to align with parent side + parent rotation
+    const sideAngle = (side === 'front' || side === 'back') ? Math.PI / 2 : 0;
+    group.rotation.y = parentRotation + sideAngle;
+
     return group;
+  }
+
+  /**
+   * Rotation-aware hit test for a slot group rect.
+   */
+  _hitTestRect(g, worldX, worldZ) {
+    const dx = worldX - g.position.x;
+    const dz = worldZ - g.position.z;
+    const rot = g.rotation.y || 0;
+    const cos = Math.cos(-rot);
+    const sin = Math.sin(-rot);
+    const localX = dx * cos - dz * sin;
+    const localZ = dx * sin + dz * cos;
+    return Math.abs(localX) <= g.userData.halfW && Math.abs(localZ) <= g.userData.halfD;
+  }
+
+  /**
+   * Get max child footprint width from allowedChildren.
+   */
+  _getMaxChildWidth(config) {
+    if (!config.allowedChildren) return 1;
+    let maxW = 0;
+    for (const childId of config.allowedChildren) {
+      const c = FURNITURE[childId];
+      if (c && c.footprint) maxW = Math.max(maxW, c.footprint.w, c.footprint.d);
+    }
+    return maxW || 1;
+  }
+
+  /**
+   * Get parent's depth along a given side.
+   */
+  _getSideDepth(fp, side) {
+    if (fp.type === 'L') {
+      return (side === 'left' || side === 'right') ? fp.hinge.d : fp.hinge.w;
+    }
+    return (side === 'left' || side === 'right') ? fp.d : fp.w;
   }
 
   _isBlocked(pos, halfW, halfD, parentId) {

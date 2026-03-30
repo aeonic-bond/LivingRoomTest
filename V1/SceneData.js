@@ -44,7 +44,7 @@ class SceneData {
       colorId:     entry.colorId || null,
       ghosted:     false,
       parentId:    entry.parentId !== undefined ? entry.parentId : null,
-      slotId:      entry.slotId !== undefined ? entry.slotId : null,
+      slotGroupId: entry.slotGroupId !== undefined ? entry.slotGroupId : null,
     };
     this.items.push(item);
     this._emit('add', item);
@@ -95,8 +95,8 @@ class SceneData {
   /**
    * Get the child occupying a specific slot on a parent.
    */
-  getChildInSlot(parentId, slotId) {
-    return this.items.find(it => it.parentId === parentId && it.slotId === slotId) || null;
+  getChildInSlotGroup(parentId, slotGroupId) {
+    return this.items.find(it => it.parentId === parentId && it.slotGroupId === slotGroupId) || null;
   }
 
   /**

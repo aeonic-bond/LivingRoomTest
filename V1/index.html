@@ -202,7 +202,7 @@ state.on('enter:transform', () => {
 state.on('enter:placing_child', (data) => {
   cursor.disable();
   pulse.stop();
-  if (data && data.slotId) slots.lockHover(data.slotId);
+  if (data && data.slotGroupId) slots.lockHover(data.slotGroupId);
 });
 
 state.on('exit:placing_child', () => {
@@ -274,7 +274,7 @@ canvas.addEventListener('click', (e) => {
       if (slotHit) {
         state.set(STATES.PLACING_CHILD, {
           parentId: slotHit.parentId,
-          slotId:   slotHit.slotId,
+          slotGroupId: slotHit.slotGroupId,
           x: hit.x,
           z: hit.z,
         });

@@ -431,12 +431,12 @@ class TransformController {
 
     // Slot snap — detent at the last position before a slot/child disappears.
     // Works for both edge and corner affinity parents with slots.
-    if (config.slots && config.slots.length > 0) {
+    if (config.slotGroups && config.slotGroups.length > 0) {
       // Determine slide axis from slot positions: find axis with most spread
       const originItem = { ...item, x: 0, z: 0 };
       let spreadX = 0, spreadZ = 0;
-      for (const slot of config.slots) {
-        const sp = getSlotWorldPosition(originItem, slot, null, 0.8);
+      for (const sg of config.slotGroups) {
+        const sp = getSlotWorldPosition(originItem, sg, null, 0.8);
         spreadX = Math.max(spreadX, Math.abs(sp.x));
         spreadZ = Math.max(spreadZ, Math.abs(sp.z));
       }
@@ -448,10 +448,10 @@ class TransformController {
 
       // Compute per-side extent from parent center to outermost slot/child edge
       let lowExtent = 0, highExtent = 0;
-      for (const slot of config.slots) {
-        const child = this.sceneData.getChildInSlot(item.id, slot.id);
+      for (const sg of config.slotGroups) {
+        const child = this.sceneData.getChildInSlotGroup(item.id, sg.id);
         const slotPos = getSlotWorldPosition(
-          originItem, slot, child ? child.type : null, child ? undefined : 0.8
+          originItem, sg, child ? child.type : null, child ? undefined : 0.8
         );
         // Full extent = distance from parent center to outer edge of slot/child
         const slideOffset = isHorizontal ? slotPos.x : slotPos.z;
