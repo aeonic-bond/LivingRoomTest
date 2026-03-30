@@ -38,9 +38,9 @@ const FURNITURE = {
     buffer: 1,
     footprint: { w: 7, d: 3 },
     mesh: { type: 'couch' },
-    slotGroups: [
-      { id: 'left',  side: 'left' },
-      { id: 'right', side: 'right' },
+    slots: [
+      { id: 'left-0',  side: 'left',  along: 0.5 },
+      { id: 'right-0', side: 'right', along: 0.5 },
     ],
     allowedChildren: ['sideTable', 'floorLamp'],
     colorOptions: { rows: [{ id: 'fabric', label: 'Fabric', options: PALETTE_UPHOLSTERED }] },
@@ -57,9 +57,9 @@ const FURNITURE = {
       minorThrust: 4,               // extends beyond hinge along minor edge
     },
     mesh: { type: 'sectional' },
-    slotGroups: [
-      { id: 'left',  side: 'left' },
-      { id: 'right', side: 'right' },
+    slots: [
+      { id: 'left-0',  side: 'left',  along: 0.5 },
+      { id: 'right-0', side: 'right', along: 0.5 },
     ],
     allowedChildren: ['sideTable', 'floorLamp'],
     colorOptions: { rows: [{ id: 'fabric', label: 'Fabric', options: PALETTE_UPHOLSTERED }] },

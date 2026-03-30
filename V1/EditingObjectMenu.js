@@ -23,7 +23,7 @@ class EditingObjectMenu {
 
     this._itemId = null;
     this._lockedItemId = null;
-    this._childGroupId = null;
+    this._childSlotId = null;
     this._childParentId = null;
 
     this._buildDOM();
@@ -52,7 +52,7 @@ class EditingObjectMenu {
       if (data && data.itemId != null) this.show(data.itemId);
     });
     this.state.on('enter:placing_child', (data) => {
-      if (data) this._showChildSelecting(data.parentId, data.groupId, data.subSlot);
+      if (data) this._showChildSelecting(data.parentId, data.slotId);
     });
     this.state.on('enter:default', () => {
       this.hide();
@@ -129,9 +129,9 @@ class EditingObjectMenu {
 
     // Show child cards for placed children
     const config = FURNITURE[item.type];
-    if (config && config.slotGroups) {
-      for (const group of config.slotGroups) {
-        const child = this.sceneData.getChildrenInSlotGroup(itemId, group.id)[0];
+    if (config && config.slots) {
+      for (const slot of config.slots) {
+        const child = this.sceneData.getChildInSlot(itemId, slot.id);
         if (child) {
           const childCard = this._buildItemCard(child);
           this.el.appendChild(childCard);
@@ -143,10 +143,9 @@ class EditingObjectMenu {
     this._lockPosition(itemId);
   }
 
-  _showChildSelecting(parentId, groupId, subSlot) {
+  _showChildSelecting(parentId, slotId) {
     this._childParentId = parentId;
-    this._childGroupId = groupId;
-    this._childSubSlot = subSlot || 'back';
+    this._childSlotId = slotId;
 
     const parentItem = this.sceneData.get(parentId);
     if (!parentItem) return;
@@ -397,21 +396,20 @@ class EditingObjectMenu {
     if (!parentItem) return;
 
     const parentConfig = FURNITURE[parentItem.type];
-    const groupConfig = parentConfig.slotGroups.find(s => s.id === this._childGroupId);
+    const slotConfig = parentConfig.slots.find(s => s.id === this._childSlotId);
 
     // Adjust parent position so the child fits
-    if (groupConfig) {
-      this._adjustParentForChild(parentItem, childTypeId, groupConfig, this._childSubSlot);
+    if (slotConfig) {
+      this._adjustParentForChild(parentItem, childTypeId, slotConfig);
     }
 
     this.sceneData.add({
-      type:        childTypeId,
-      x:           0,
-      z:           0,
-      rotation:    0,
-      parentId:    this._childParentId,
-      slotGroupId: this._childGroupId,
-      subSlot:     this._childSubSlot,
+      type:     childTypeId,
+      x:        0,
+      z:        0,
+      rotation: 0,
+      parentId: this._childParentId,
+      slotId:   this._childSlotId,
     });
 
     // Back to selected — menu rebuilds with child card
@@ -422,7 +420,7 @@ class EditingObjectMenu {
    * If placing this child would be blocked, shift the parent along the
    * slot's slide axis until the child clears.
    */
-  _adjustParentForChild(parentItem, childType, groupConfig, subSlot) {
+  _adjustParentForChild(parentItem, childType, slotConfig) {
     const rot = parentItem.rotation || 0;
     const cosR = Math.abs(Math.cos(rot));
     const sinR = Math.abs(Math.sin(rot));
@@ -431,12 +429,12 @@ class EditingObjectMenu {
     const halfW = (childFp.w * cosR + childFp.d * sinR) / 2;
     const halfD = (childFp.w * sinR + childFp.d * cosR) / 2;
 
-    const childPos = getSlotGroupWorldPosition(parentItem, groupConfig, childType, null, subSlot);
+    const childPos = getSlotWorldPosition(parentItem, slotConfig, childType);
     if (!isSlotBlocked(childPos, halfW, halfD, parentItem.id, this.room, this.sceneData)) return;
 
     const originItem = { ...parentItem, x: 0, z: 0 };
-    const groupAtOrigin = getSlotGroupWorldPosition(originItem, groupConfig, childType, null, subSlot);
-    const isHorizontal = Math.abs(groupAtOrigin.x) > Math.abs(groupAtOrigin.z);
+    const slotAtOrigin = getSlotWorldPosition(originItem, slotConfig, childType);
+    const isHorizontal = Math.abs(slotAtOrigin.x) > Math.abs(slotAtOrigin.z);
 
     const childSlidePos = isHorizontal ? childPos.x : childPos.z;
     const roomMax = isHorizontal ? this.room.width : this.room.height;
@@ -448,7 +446,7 @@ class EditingObjectMenu {
       if (isHorizontal) testParent.x = parentItem.x + dir * s;
       else testParent.z = parentItem.z + dir * s;
 
-      const testPos = getSlotGroupWorldPosition(testParent, groupConfig, childType, null, subSlot);
+      const testPos = getSlotWorldPosition(testParent, slotConfig, childType);
       if (!isSlotBlocked(testPos, halfW, halfD, parentItem.id, this.room, this.sceneData)) {
         this.sceneData.update(parentItem.id,
           isHorizontal ? { x: testParent.x } : { z: testParent.z }

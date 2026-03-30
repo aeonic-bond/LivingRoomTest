@@ -202,7 +202,7 @@ state.on('enter:transform', () => {
 state.on('enter:placing_child', (data) => {
   cursor.disable();
   pulse.stop();
-  if (data && data.groupId) slots.lockHover(data.groupId);
+  if (data && data.slotId) slots.lockHover(data.slotId);
 });
 
 state.on('exit:placing_child', () => {
@@ -270,12 +270,11 @@ canvas.addEventListener('click', (e) => {
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     if (raycaster.ray.intersectPlane(plane, hit)) {
       // Check if clicking a slot indicator
-      const groupHit = slots.hitTest(hit.x, hit.z);
-      if (groupHit) {
+      const slotHit = slots.hitTest(hit.x, hit.z);
+      if (slotHit) {
         state.set(STATES.PLACING_CHILD, {
-          parentId: groupHit.parentId,
-          groupId:  groupHit.groupId,
-          subSlot:  groupHit.subSlot,
+          parentId: slotHit.parentId,
+          slotId:   slotHit.slotId,
           x: hit.x,
           z: hit.z,
         });

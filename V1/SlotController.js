@@ -1,21 +1,11 @@
 /**
  * SlotController
  *
- * Manages slot group indicators for selected furniture.
- * Each slot group is a rounded rectangle matching the parent's
- * depth on that side × the largest allowed child width.
- *
- * Hover behavior (empty state):
- *   - Default: single merged indicator covering the full side depth
- *   - Hovered: splits into two sub-slots (front/back) based on cursor position.
- *     Active sub-slot = max child depth, inactive = remaining space.
- *
- * Event-driven: reacts to SceneData add/remove to update
- * slot group visibility. All show/hide transitions use slide animation.
+ * Manages child slot indicators for selected furniture.
+ * Event-driven: reacts to SceneData add/remove to toggle
+ * individual slot visibility. All show/hide transitions
+ * use the same slide animation.
  */
-
-const SUB_SLOT_GAP = 0.15; // ft gap between front/back sub-slots on hover
-
 class SlotController {
   /**
    * @param {THREE.Scene} scene
@@ -27,11 +17,11 @@ class SlotController {
     this.room      = room;
     this.sceneData = sceneData;
 
-    this._groups   = null;  // Map: groupId → mesh
+    this._slots    = null;  // Map: slotId → { mesh, state }
     this._parentId = null;
+    this._slotSize = 0.8;
     this._animSpeed = 0.03;
-    this._hoveredGroupId = null;
-    this._activeSubSlot  = null; // 'front' or 'back'
+    this._hoveredSlotId = null;
     this._lockedHover = false;
 
     // React to child add/remove
@@ -42,8 +32,8 @@ class SlotController {
   // ── Public API ──────────────────────────────────────────
 
   /**
-   * Show slot group indicators for a parent item.
-   * Creates meshes for ALL groups — full ones start hidden.
+   * Show slot indicators for a parent item.
+   * Creates meshes for ALL slots — filled ones start hidden.
    */
   show(parentId, force) {
     if (this._parentId === parentId && !force) return;
@@ -53,54 +43,47 @@ class SlotController {
     const item = this.sceneData.get(parentId);
     if (!item) return;
     const config = FURNITURE[item.type];
-    if (!config || !config.slotGroups) return;
+    if (!config || !config.slots) return;
 
-    this._groups = {};
+    this._slots = {};
     this._parentRotation = item.rotation || 0;
+    const size = this._slotSize;
+    const fp = config.footprint;
 
-    const childW = getMaxChildWidth(config);
-    const childD = getMaxChildDepth(config);
-    const halfChildW = childW / 2;
+    config.slots.forEach(slot => {
+      // Circle indicator: rotation-invariant, same size in all directions
+      const half = size / 2;
+      const pos = getSlotWorldPosition(item, slot, null, size);
+      const filled = !!this.sceneData.getChildInSlot(parentId, slot.id);
+      const blocked = filled || this._isBlocked(pos, half, half, parentId);
 
-    config.slotGroups.forEach(group => {
-      const depth = getSlotGroupDepth(config, group.side);
-      const pos = getSlotGroupWorldPosition(item, group, null, childW);
-
-      const children = this.sceneData.getChildrenInSlotGroup(parentId, group.id);
-      const isFull = children.length >= 2;
-      const blocked = isFull || this._isBlocked(pos, halfChildW, depth / 2, parentId);
-
-      // Build group with merged + split sub-groups
-      const mesh = this._buildSlotGroupMesh(childW, depth, childD, item.rotation, group.side);
+      const mesh = this._buildSlotMesh(size);
       mesh.position.set(item.x, 0.003, item.z);
-      mesh.userData.groupId    = group.id;
-      mesh.userData.side       = group.side;
-      mesh.userData.parentId   = parentId;
-      mesh.userData.targetX    = pos.x;
-      mesh.userData.targetZ    = pos.z;
-      mesh.userData.halfW      = halfChildW;
-      mesh.userData.halfD      = depth / 2;
-      mesh.userData.totalDepth = depth;
-      mesh.userData.childD     = childD;
+      mesh.userData.slotId   = slot.id;
+      mesh.userData.parentId = parentId;
+      mesh.userData.targetX  = pos.x;
+      mesh.userData.targetZ  = pos.z;
+      mesh.userData.halfW    = half;
+      mesh.userData.halfD    = half;
 
       // Animation state
       mesh.userData.slideT   = 0;
       mesh.userData.hiding   = false;
-      mesh.userData.full     = isFull;
+      mesh.userData.filled   = filled;
       mesh.visible = !blocked;
 
       this.scene.add(mesh);
-      this._groups[group.id] = mesh;
+      this._slots[slot.id] = mesh;
     });
   }
 
   /**
-   * Animate all visible groups back into parent, then clean up.
+   * Animate all visible slots back into parent, then clean up.
    */
   hide() {
-    if (!this._groups) return;
-    for (const groupId in this._groups) {
-      const g = this._groups[groupId];
+    if (!this._slots) return;
+    for (const slotId in this._slots) {
+      const g = this._slots[slotId];
       this._setVisible(g, false);
     }
     this._parentId = null;
@@ -110,11 +93,11 @@ class SlotController {
    * Call from render loop. Drives all slide animations.
    */
   update() {
-    if (!this._groups) return;
+    if (!this._slots) return;
     let anyActive = false;
 
-    for (const groupId in this._groups) {
-      const g = this._groups[groupId];
+    for (const slotId in this._slots) {
+      const g = this._slots[slotId];
       const parentItem = this.sceneData.get(g.userData.parentId);
       if (!parentItem) continue;
 
@@ -144,12 +127,12 @@ class SlotController {
   }
 
   /**
-   * Update slot group positions and visibility during parent drag.
+   * Update slot positions and visibility during parent drag.
    */
   updatePositions(item) {
-    if (!this._groups) return;
+    if (!this._slots) return;
 
-    // Rotation changed (reorientation) — rebuild
+    // Rotation changed (reorientation) — rebuild slots
     const currentRotation = item.rotation || 0;
     if (currentRotation !== this._parentRotation) {
       this.show(item.id, true);
@@ -157,17 +140,16 @@ class SlotController {
     }
 
     const config = FURNITURE[item.type];
-    if (!config || !config.slotGroups) return;
+    if (!config || !config.slots) return;
+    const size = this._slotSize;
 
-    const childW = getMaxChildWidth(config);
+    for (const slotId in this._slots) {
+      const g = this._slots[slotId];
+      if (g.userData.filled) continue;
 
-    for (const groupId in this._groups) {
-      const g = this._groups[groupId];
-      if (g.userData.full) continue;
-
-      const groupConfig = config.slotGroups.find(s => s.id === groupId);
-      if (!groupConfig) continue;
-      const pos = getSlotGroupWorldPosition(item, groupConfig, null, childW);
+      const slotConfig = config.slots.find(s => s.id === slotId);
+      if (!slotConfig) continue;
+      const pos = getSlotWorldPosition(item, slotConfig, null, size);
       g.userData.targetX = pos.x;
       g.userData.targetZ = pos.z;
 
@@ -183,18 +165,18 @@ class SlotController {
   }
 
   /**
-   * Get the parent id currently showing slot groups.
+   * Get the parent id currently showing slots.
    */
   get parentId() {
     return this._parentId;
   }
 
   /**
-   * Lock a group in hover state (e.g. during PLACING_CHILD).
+   * Lock a slot in hover state (e.g. during PLACING_CHILD).
    */
-  lockHover(groupId) {
+  lockHover(slotId) {
     this._lockedHover = true;
-    this._setHoveredGroup(groupId);
+    this._setHoveredSlot(slotId);
   }
 
   /**
@@ -202,155 +184,79 @@ class SlotController {
    */
   unlockHover() {
     this._lockedHover = false;
-    this._setHoveredGroup(null);
+    this._setHoveredSlot(null);
   }
 
   /**
    * Update hover state from a world position. Call from mouse move.
-   * When hovering an empty group, determines front/back sub-slot.
    */
   updateHover(x, z) {
     if (this._lockedHover) return;
-    if (!this._groups) { this._setHoveredGroup(null); return; }
-
-    for (const groupId in this._groups) {
-      const g = this._groups[groupId];
-      if (!g.visible || g.userData.hiding || g.userData.full) continue;
-
+    if (!this._slots) { this._setHoveredSlot(null); return; }
+    const radius = this._slotSize / 2;
+    for (const slotId in this._slots) {
+      const g = this._slots[slotId];
+      if (!g.visible || g.userData.hiding || g.userData.filled) continue;
       const dx = x - g.position.x;
       const dz = z - g.position.z;
-      if (Math.abs(dx) <= g.userData.halfW && Math.abs(dz) <= g.userData.halfD) {
-        this._setHoveredGroup(groupId);
-
-        // Determine front vs back from cursor position along the depth axis
-        // Depth axis depends on side orientation:
-        //   left/right: depth runs along world Z (adjusted for parent rotation)
-        //   front/back: depth runs along world X
-        const parentItem = this.sceneData.get(g.userData.parentId);
-        if (parentItem) {
-          const rot = parentItem.rotation || 0;
-          const cos = Math.cos(rot);
-          const sin = Math.sin(rot);
-          const side = g.userData.side;
-
-          // Project cursor offset into parent-local space
-          const localX = dx * cos + dz * sin;
-          const localZ = -dx * sin + dz * cos;
-
-          // Depth axis in local space: left/right = Z, front/back = X
-          let depthOffset;
-          if (side === 'left' || side === 'right') {
-            depthOffset = localZ;
-          } else {
-            depthOffset = localX;
-          }
-
-          // Negative depth offset = front (toward lower Z/X), positive = back
-          const subSlot = depthOffset < 0 ? 'front' : 'back';
-          if (subSlot !== this._activeSubSlot) {
-            this._activeSubSlot = subSlot;
-            this._updateSplitView(g, subSlot);
-          }
-        }
+      if (dx * dx + dz * dz <= radius * radius) {
+        this._setHoveredSlot(slotId);
         return;
       }
     }
-    this._setHoveredGroup(null);
+    this._setHoveredSlot(null);
   }
 
-  _setHoveredGroup(groupId) {
-    if (this._hoveredGroupId === groupId) return;
+  _setHoveredSlot(slotId) {
+    if (this._hoveredSlotId === slotId) return;
 
-    // Un-hover previous — revert to merged view
-    if (this._hoveredGroupId && this._groups && this._groups[this._hoveredGroupId]) {
-      const g = this._groups[this._hoveredGroupId];
-      this._showMerged(g);
+    // Un-hover previous
+    if (this._hoveredSlotId && this._slots && this._slots[this._hoveredSlotId]) {
+      const g = this._slots[this._hoveredSlotId];
+      this._setSlotOpacity(g, false);
     }
 
-    this._hoveredGroupId = groupId;
-    this._activeSubSlot = null;
+    this._hoveredSlotId = slotId;
 
-    // Hover new — split view will be set by updateHover's sub-slot detection
-    if (groupId && this._groups && this._groups[groupId]) {
-      // Split view activates when updateHover determines front/back
+    // Hover new
+    if (slotId && this._slots && this._slots[slotId]) {
+      const g = this._slots[slotId];
+      this._setSlotOpacity(g, true);
     }
   }
 
-  /**
-   * Show merged view, hide split view.
-   */
-  _showMerged(g) {
-    const merged = g.getObjectByName('merged');
-    const split  = g.getObjectByName('split');
-    if (merged) merged.visible = true;
-    if (split)  split.visible = false;
-  }
-
-  /**
-   * Show split view, hide merged view. Style active/inactive sub-slots.
-   */
-  _showSplit(g) {
-    const merged = g.getObjectByName('merged');
-    const split  = g.getObjectByName('split');
-    if (merged) merged.visible = false;
-    if (split)  split.visible = true;
-  }
-
-  /**
-   * Update which sub-slot is active (green) vs inactive (gray).
-   */
-  _updateSplitView(g, activeSubSlot) {
-    this._showSplit(g);
-    const split = g.getObjectByName('split');
-    if (!split) return;
-
-    const frontGroup = split.getObjectByName('subslot-front');
-    const backGroup  = split.getObjectByName('subslot-back');
-
-    if (frontGroup) this._styleSubSlot(frontGroup, activeSubSlot === 'front');
-    if (backGroup)  this._styleSubSlot(backGroup, activeSubSlot === 'back');
-  }
-
-  /**
-   * Style a sub-slot as active (green) or inactive (gray).
-   */
-  _styleSubSlot(subGroup, active) {
-    subGroup.traverse((child) => {
+  _setSlotOpacity(group, hovered) {
+    group.traverse((child) => {
       if (child.isMesh && child.material && child.material.transparent) {
-        child.material.color.set(active ? 0x38725C : 0xD0CECE);
-        child.material.opacity = active ? 0.15 : 0.05;
+        child.material.opacity = hovered ? 0.35 : 0.1;
       }
       if (child.isLine) {
         if (child.material.isDashedLineMaterial) {
-          child.material.color.set(active ? 0x38725C : 0xD0CECE);
-          child.material.opacity = active ? 1.0 : 0.6;
+          // Border circle
+          child.material.opacity = hovered ? 1.0 : 0.6;
           child.material.transparent = true;
         } else {
           // Plus cross
-          child.material.color.set(active ? 0x38725C : 0xD0CECE);
+          child.material.color.set(hovered ? 0x000000 : 0xd9d9d9);
         }
       }
     });
   }
 
   /**
-   * Hit test: check if a world point falls within a visible, unfilled group.
-   * Returns groupId and which sub-slot (front/back) was hit.
-   * @returns {{ parentId, groupId, subSlot } | null}
+   * Hit test: check if a world point falls within a visible, unfilled slot.
+   * @returns {{ parentId, slotId } | null}
    */
   hitTest(x, z) {
-    if (!this._groups) return null;
-    for (const groupId in this._groups) {
-      const g = this._groups[groupId];
-      if (!g.visible || g.userData.hiding || g.userData.full) continue;
+    if (!this._slots) return null;
+    const radius = this._slotSize / 2;
+    for (const slotId in this._slots) {
+      const g = this._slots[slotId];
+      if (!g.visible || g.userData.hiding || g.userData.filled) continue;
       const dx = x - g.position.x;
       const dz = z - g.position.z;
-      if (Math.abs(dx) <= g.userData.halfW && Math.abs(dz) <= g.userData.halfD) {
-        return {
-          parentId: g.userData.parentId,
-          groupId:  g.userData.groupId,
-          subSlot:  this._activeSubSlot || 'back',
-        };
+      if (dx * dx + dz * dz <= radius * radius) {
+        return { parentId: g.userData.parentId, slotId: g.userData.slotId };
       }
     }
     return null;
@@ -358,14 +264,21 @@ class SlotController {
 
   // ── Single visibility control ───────────────────────────
 
+  /**
+   * Unified show/hide for a single slot mesh.
+   * Triggers slide-out or slide-back animation.
+   */
   _setVisible(g, visible) {
     const isVisible = g.visible && !g.userData.hiding;
 
     if (visible && !isVisible) {
+      // Show — slide out from parent
       if (g.userData.hiding) {
+        // Was mid-hide, reverse
         g.userData.hiding = false;
         g.userData.slideT = 0;
       } else {
+        // Fresh show
         const parentItem = this.sceneData.get(g.userData.parentId);
         if (parentItem) {
           g.position.x = parentItem.x;
@@ -375,6 +288,7 @@ class SlotController {
       }
       g.visible = true;
     } else if (!visible && isVisible) {
+      // Hide — slide back to parent
       g.userData.hiding = true;
       g.userData.slideT = 0;
       g.userData.hideFromX = g.position.x;
@@ -385,187 +299,90 @@ class SlotController {
   // ── Event handlers ──────────────────────────────────────
 
   _onChildAdd(item) {
-    if (!this._groups || item.parentId !== this._parentId) return;
-    const g = this._groups[item.slotGroupId];
+    if (!this._slots || item.parentId !== this._parentId) return;
+    const g = this._slots[item.slotId];
     if (!g) return;
-
-    const children = this.sceneData.getChildrenInSlotGroup(this._parentId, item.slotGroupId);
-    if (children.length >= 2) {
-      g.userData.full = true;
-      this._setVisible(g, false);
-    }
+    g.userData.filled = true;
+    this._setVisible(g, false);
   }
 
   _onChildRemove(item) {
-    if (!this._groups || item.parentId !== this._parentId) return;
-    const g = this._groups[item.slotGroupId];
+    if (!this._slots || item.parentId !== this._parentId) return;
+    const g = this._slots[item.slotId];
     if (!g) return;
+    g.userData.filled = false;
 
-    const children = this.sceneData.getChildrenInSlotGroup(this._parentId, item.slotGroupId);
-    if (children.length < 2) {
-      g.userData.full = false;
-
-      const parentItem = this.sceneData.get(this._parentId);
-      if (!parentItem) return;
-      const config = FURNITURE[parentItem.type];
-      const groupConfig = config.slotGroups.find(s => s.id === item.slotGroupId);
-      if (!groupConfig) return;
-      const childW = getMaxChildWidth(config);
-      const pos = getSlotGroupWorldPosition(parentItem, groupConfig, null, childW);
-      if (!this._isBlocked(pos, g.userData.halfW, g.userData.halfD, this._parentId)) {
-        g.userData.targetX = pos.x;
-        g.userData.targetZ = pos.z;
-        this._setVisible(g, true);
-      }
+    // Check if slot position is valid before showing
+    const parentItem = this.sceneData.get(this._parentId);
+    if (!parentItem) return;
+    const config = FURNITURE[parentItem.type];
+    const slotConfig = config.slots.find(s => s.id === item.slotId);
+    if (!slotConfig) return;
+    const size = this._slotSize;
+    const pos = getSlotWorldPosition(parentItem, slotConfig, null, size);
+    if (!this._isBlocked(pos, g.userData.halfW, g.userData.halfD, this._parentId)) {
+      g.userData.targetX = pos.x;
+      g.userData.targetZ = pos.z;
+      this._setVisible(g, true);
     }
   }
 
   // ── Internal ────────────────────────────────────────────
 
   _destroy() {
-    if (!this._groups) return;
-    for (const groupId in this._groups) {
-      this.scene.remove(this._groups[groupId]);
+    if (!this._slots) return;
+    for (const slotId in this._slots) {
+      this.scene.remove(this._slots[slotId]);
     }
-    this._groups = null;
-    this._hoveredGroupId = null;
-    this._activeSubSlot = null;
+    this._slots = null;
   }
 
-  /**
-   * Build a slot group mesh containing:
-   *   - "merged" sub-group: single rounded rect (default view)
-   *   - "split" sub-group: two sub-slot rounded rects (hover view)
-   *
-   * @param {number} w - width (max child width)
-   * @param {number} d - depth (parent side depth)
-   * @param {number} childD - max child depth (active sub-slot size)
-   * @param {number} rotation - parent rotation
-   * @param {string} side - 'left', 'right', 'front', 'back'
-   */
-  _buildSlotGroupMesh(w, d, childD, rotation, side) {
-    const wrapper = new THREE.Group();
-    const r = Math.min(w, d) * 0.2;
+  _buildSlotMesh(diameter) {
+    const group = new THREE.Group();
+    const radius = diameter / 2;
 
-    // ── Merged view (default) ──────────────────────────
-    const merged = new THREE.Group();
-    merged.name = 'merged';
-    this._addRoundedRect(merged, w, d, r, 0x38725C, 0.1);
-    this._addPlus(merged, 0, 0);
-    wrapper.add(merged);
-
-    // ── Split view (on hover) ──────────────────────────
-    const split = new THREE.Group();
-    split.name = 'split';
-    split.visible = false;
-
-    const activeD   = childD;
-    const inactiveD = d - childD - SUB_SLOT_GAP;
-    const rActive   = Math.min(w, activeD) * 0.2;
-    const rInactive = Math.min(w, Math.max(inactiveD, 0.1)) * 0.2;
-
-    // "back" sub-slot: positive Z half (offset from center)
-    const backOffZ = (d / 2) - (activeD / 2);
-    const backGroup = new THREE.Group();
-    backGroup.name = 'subslot-back';
-    backGroup.position.z = backOffZ;
-    this._addRoundedRect(backGroup, w, activeD, rActive, 0x38725C, 0.15);
-    this._addPlus(backGroup, 0, 0);
-    split.add(backGroup);
-
-    // "front" sub-slot: negative Z half
-    if (inactiveD > 0.1) {
-      const frontOffZ = -(d / 2) + (inactiveD / 2);
-      const frontGroup = new THREE.Group();
-      frontGroup.name = 'subslot-front';
-      frontGroup.position.z = frontOffZ;
-      this._addRoundedRect(frontGroup, w, inactiveD, rInactive, 0xD0CECE, 0.05);
-      this._addPlus(frontGroup, 0, 0);
-      split.add(frontGroup);
-    }
-
-    wrapper.add(split);
-
-    // Rotate for front/back sides
-    if (side === 'front' || side === 'back') {
-      wrapper.rotation.y = Math.PI / 2;
-    }
-
-    return wrapper;
-  }
-
-  /**
-   * Add a rounded-rect fill + dashed border to a group.
-   */
-  _addRoundedRect(group, w, h, r, color, opacity) {
-    const shape = this._roundedRectShape(w, h, r);
-
-    // Fill
-    const fillGeo = new THREE.ShapeGeometry(shape);
+    // Green fill circle
+    const fillGeo = new THREE.CircleGeometry(radius, 32);
     const fillMat = new THREE.MeshBasicMaterial({
-      color: color,
+      color: 0x88cc88,
       transparent: true,
-      opacity: opacity,
+      opacity: 0.1,
       depthWrite: false,
     });
     const fillMesh = new THREE.Mesh(fillGeo, fillMat);
     fillMesh.rotation.x = -Math.PI / 2;
     group.add(fillMesh);
 
-    // Dashed border
-    const borderPts = shape.getPoints(32);
-    const border3D = borderPts.map(p => new THREE.Vector3(p.x, 0.001, -p.y));
-    border3D.push(border3D[0].clone());
-    const borderGeo = new THREE.BufferGeometry().setFromPoints(border3D);
+    // Dashed circle border
+    const segments = 64;
+    const circlePts = [];
+    for (let i = 0; i <= segments; i++) {
+      const theta = (i / segments) * Math.PI * 2;
+      circlePts.push(new THREE.Vector3(
+        Math.cos(theta) * radius,
+        0.001,
+        Math.sin(theta) * radius
+      ));
+    }
+    const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
     const dashedMat = new THREE.LineDashedMaterial({
-      color: color,
+      color: 0x88cc88,
       dashSize: 0.08,
       gapSize: 0.06,
-      transparent: true,
-      opacity: 1.0,
     });
-    const borderLine = new THREE.Line(borderGeo, dashedMat);
-    borderLine.computeLineDistances();
-    group.add(borderLine);
-  }
+    const circleLine = new THREE.Line(circleGeo, dashedMat);
+    circleLine.computeLineDistances();
+    group.add(circleLine);
 
-  /**
-   * Add a plus cross to a group at the given local offset.
-   */
-  _addPlus(group, offX, offZ) {
+    // Plus cross
     const plusSize = 0.22;
-    const plusMat = new THREE.LineBasicMaterial({ color: 0x38725C });
-    const hPts = [
-      new THREE.Vector3(offX - plusSize / 2, 0.002, offZ),
-      new THREE.Vector3(offX + plusSize / 2, 0.002, offZ),
-    ];
+    const plusMat = new THREE.LineBasicMaterial({ color: 0xd9d9d9 });
+    const hPts = [new THREE.Vector3(-plusSize / 2, 0, 0), new THREE.Vector3(plusSize / 2, 0, 0)];
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(hPts), plusMat));
-    const vPts = [
-      new THREE.Vector3(offX, 0.002, offZ - plusSize / 2),
-      new THREE.Vector3(offX, 0.002, offZ + plusSize / 2),
-    ];
+    const vPts = [new THREE.Vector3(0, 0, -plusSize / 2), new THREE.Vector3(0, 0, plusSize / 2)];
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(vPts), plusMat));
-  }
 
-  /**
-   * Create a THREE.Shape for a rounded rectangle centered at origin.
-   */
-  _roundedRectShape(w, h, r) {
-    const shape = new THREE.Shape();
-    const hw = w / 2;
-    const hh = h / 2;
-
-    shape.moveTo(-hw + r, -hh);
-    shape.lineTo(hw - r, -hh);
-    shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
-    shape.lineTo(hw, hh - r);
-    shape.quadraticCurveTo(hw, hh, hw - r, hh);
-    shape.lineTo(-hw + r, hh);
-    shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
-    shape.lineTo(-hw, -hh + r);
-    shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
-
-    return shape;
+    return group;
   }
 
   _isBlocked(pos, halfW, halfD, parentId) {
