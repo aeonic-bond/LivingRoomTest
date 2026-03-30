@@ -233,7 +233,7 @@ class SceneController {
         const parentConfig = FURNITURE[parentItem.type];
         const slotConfig = parentConfig.slotGroups.find(s => s.id === item.slotGroupId);
         if (slotConfig) {
-          const pos = getSlotWorldPosition(parentItem, slotConfig, item.type);
+          const pos = getSlotWorldPosition(parentItem, slotConfig, item.type, null, item.subSlot);
           item.x = pos.x;
           item.z = pos.z;
         }
@@ -282,7 +282,7 @@ class SceneController {
       const slotConfig = parentConfig.slotGroups.find(s => s.id === child.slotGroupId);
       if (!slotConfig) continue;
 
-      const pos = getSlotWorldPosition(parentItem, slotConfig, child.type);
+      const pos = getSlotWorldPosition(parentItem, slotConfig, child.type, null, child.subSlot);
       child.x = pos.x;
       child.z = pos.z;
       child.rotation = rot;

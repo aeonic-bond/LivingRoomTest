@@ -45,6 +45,7 @@ class SceneData {
       ghosted:     false,
       parentId:    entry.parentId !== undefined ? entry.parentId : null,
       slotGroupId: entry.slotGroupId !== undefined ? entry.slotGroupId : null,
+      subSlot:     entry.subSlot || null,  // 'front' or 'back'
     };
     this.items.push(item);
     this._emit('add', item);

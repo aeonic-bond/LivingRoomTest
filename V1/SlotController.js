@@ -21,6 +21,7 @@ class SlotController {
     this._parentId = null;
     this._animSpeed = 0.03;
     this._hoveredSlotId = null;
+    this._activeSubSlot = null;  // 'front' or 'back'
     this._lockedHover = false;
 
     // React to child add/remove
@@ -202,6 +203,14 @@ class SlotController {
       if (!g.visible || g.userData.hiding || g.userData.filled) continue;
       if (this._hitTestRect(g, x, z)) {
         this._setHoveredSlot(slotId);
+        // Determine front/back from cursor's local Z within the slot
+        const localZ = this._getLocalZ(g, x, z);
+        // -Z local = toward edge/wall = back, +Z local = into room = front
+        const subSlot = localZ < 0 ? 'back' : 'front';
+        if (subSlot !== this._activeSubSlot) {
+          this._activeSubSlot = subSlot;
+          this._showSplit(g, subSlot);
+        }
         return;
       }
     }
@@ -211,37 +220,14 @@ class SlotController {
   _setHoveredSlot(slotId) {
     if (this._hoveredSlotId === slotId) return;
 
-    // Un-hover previous
+    // Un-hover previous — revert to merged view
     if (this._hoveredSlotId && this._slots && this._slots[this._hoveredSlotId]) {
       const g = this._slots[this._hoveredSlotId];
-      this._setSlotOpacity(g, false);
+      this._showMerged(g);
     }
 
     this._hoveredSlotId = slotId;
-
-    // Hover new
-    if (slotId && this._slots && this._slots[slotId]) {
-      const g = this._slots[slotId];
-      this._setSlotOpacity(g, true);
-    }
-  }
-
-  _setSlotOpacity(group, hovered) {
-    group.traverse((child) => {
-      if (child.isMesh && child.material && child.material.transparent) {
-        child.material.opacity = hovered ? 0.35 : 0.1;
-      }
-      if (child.isLine) {
-        if (child.material.isDashedLineMaterial) {
-          // Border circle
-          child.material.opacity = hovered ? 1.0 : 0.6;
-          child.material.transparent = true;
-        } else {
-          // Plus cross
-          child.material.color.set(hovered ? 0x000000 : 0xd9d9d9);
-        }
-      }
-    });
+    this._activeSubSlot = null;
   }
 
   /**
@@ -254,7 +240,11 @@ class SlotController {
       const g = this._slots[slotId];
       if (!g.visible || g.userData.hiding || g.userData.filled) continue;
       if (this._hitTestRect(g, x, z)) {
-        return { parentId: g.userData.parentId, slotGroupId: g.userData.slotGroupId };
+        return {
+          parentId: g.userData.parentId,
+          slotGroupId: g.userData.slotGroupId,
+          subSlot: this._activeSubSlot || 'back',
+        };
       }
     }
     return null;
@@ -341,67 +331,25 @@ class SlotController {
    * Rotated to align with the parent's side.
    */
   _buildSlotGroupMesh(w, d, parentRotation, side) {
-    const group = new THREE.Group();
-    const r = Math.min(w, d, 0.5) * 0.4; // corner radius, capped
+    const wrapper = new THREE.Group();
 
-    // Rounded rect shape (centered at origin in XY, laid flat)
-    const shape = new THREE.Shape();
-    const hw = w / 2, hh = d / 2;
-    shape.moveTo(-hw + r, -hh);
-    shape.lineTo(hw - r, -hh);
-    shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
-    shape.lineTo(hw, hh - r);
-    shape.quadraticCurveTo(hw, hh, hw - r, hh);
-    shape.lineTo(-hw + r, hh);
-    shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
-    shape.lineTo(-hw, -hh + r);
-    shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+    // Merged view (default) — single rounded rect
+    const merged = new THREE.Group();
+    merged.name = 'merged';
+    this._addSubSlotRect(merged, w, d, Math.min(w, d, 0.5) * 0.4, 0, true);
+    wrapper.add(merged);
 
-    // Fill (50% opacity as per Figma)
-    const fillGeo = new THREE.ShapeGeometry(shape);
-    const fillMat = new THREE.MeshBasicMaterial({
-      color: 0x38725C,
-      transparent: true,
-      opacity: 0.05,
-      depthWrite: false,
-    });
-    const fillMesh = new THREE.Mesh(fillGeo, fillMat);
-    fillMesh.rotation.x = -Math.PI / 2;
-    group.add(fillMesh);
-
-    // Dashed border
-    const borderPts = shape.getPoints(32);
-    const border3D = borderPts.map(p => new THREE.Vector3(p.x, 0.001, -p.y));
-    border3D.push(border3D[0].clone()); // close loop
-    const borderGeo = new THREE.BufferGeometry().setFromPoints(border3D);
-    const dashedMat = new THREE.LineDashedMaterial({
-      color: 0x38725C,
-      dashSize: 0.08,
-      gapSize: 0.06,
-      transparent: true,
-      opacity: 0.5,
-    });
-    const borderLine = new THREE.Line(borderGeo, dashedMat);
-    borderLine.computeLineDistances();
-    group.add(borderLine);
-
-    // Plus cross
-    const plusSize = 0.22;
-    const plusMat = new THREE.LineBasicMaterial({
-      color: 0x38725C,
-      transparent: true,
-      opacity: 0.5,
-    });
-    const hPts = [new THREE.Vector3(-plusSize / 2, 0.002, 0), new THREE.Vector3(plusSize / 2, 0.002, 0)];
-    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(hPts), plusMat));
-    const vPts = [new THREE.Vector3(0, 0.002, -plusSize / 2), new THREE.Vector3(0, 0.002, plusSize / 2)];
-    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(vPts), plusMat));
+    // Split placeholder (built on hover by _showSplit)
+    const split = new THREE.Group();
+    split.name = 'split';
+    split.visible = false;
+    wrapper.add(split);
 
     // Rotate to align with parent side + parent rotation
     const sideAngle = (side === 'front' || side === 'back') ? Math.PI / 2 : 0;
-    group.rotation.y = parentRotation + sideAngle;
+    wrapper.rotation.y = parentRotation + sideAngle;
 
-    return group;
+    return wrapper;
   }
 
   /**
@@ -439,6 +387,130 @@ class SlotController {
       return (side === 'left' || side === 'right') ? fp.hinge.d : fp.hinge.w;
     }
     return (side === 'left' || side === 'right') ? fp.d : fp.w;
+  }
+
+  /**
+   * Project a world point into a slot group's local Z (depth axis).
+   */
+  _getLocalZ(g, worldX, worldZ) {
+    const dx = worldX - g.position.x;
+    const dz = worldZ - g.position.z;
+    const rot = g.rotation.y || 0;
+    const cos = Math.cos(-rot);
+    const sin = Math.sin(-rot);
+    return dx * sin + dz * cos;
+  }
+
+  /**
+   * Show merged (default) view — single rect, hide split children.
+   */
+  _showMerged(g) {
+    const merged = g.getObjectByName('merged');
+    const split  = g.getObjectByName('split');
+    if (merged) merged.visible = true;
+    if (split)  split.visible = false;
+  }
+
+  /**
+   * Show split view — two sub-rects, active one green, inactive gray.
+   * Rebuilds split children each time to swap sizes correctly.
+   */
+  _showSplit(g, activeSubSlot) {
+    const merged = g.getObjectByName('merged');
+    if (merged) merged.visible = false;
+
+    let split = g.getObjectByName('split');
+    if (split) g.remove(split);
+
+    split = new THREE.Group();
+    split.name = 'split';
+
+    const w = g.userData.halfW * 2;
+    const d = g.userData.halfD * 2;
+    const gap = 0.15;
+    const halfD = d / 2;
+
+    // Active sub-slot = half the depth, inactive = other half
+    const subD = (d - gap) / 2;
+    const rSub = Math.min(w, subD, 0.5) * 0.4;
+
+    // Back = -Z (toward edge/wall), front = +Z (into room)
+    const backZ  = -(halfD - subD / 2);
+    const frontZ =  (halfD - subD / 2);
+
+    const backActive  = (activeSubSlot === 'back');
+    const frontActive = (activeSubSlot === 'front');
+
+    this._addSubSlotRect(split, w, subD, rSub, backZ, backActive);
+    this._addSubSlotRect(split, w, subD, rSub, frontZ, frontActive);
+
+    g.add(split);
+  }
+
+  /**
+   * Add a single sub-slot rounded rect to a parent group.
+   */
+  _addSubSlotRect(parent, w, h, r, offsetZ, active) {
+    const color = active ? 0x38725C : 0xD0CECE;
+    const fillOpacity = active ? 0.1 : 0.03;
+    const borderOpacity = active ? 0.8 : 0.4;
+    const plusOpacity = active ? 0.8 : 0.3;
+
+    const shape = this._roundedRectShape(w, h, r);
+
+    // Fill
+    const fillGeo = new THREE.ShapeGeometry(shape);
+    const fillMat = new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: fillOpacity, depthWrite: false,
+    });
+    const fillMesh = new THREE.Mesh(fillGeo, fillMat);
+    fillMesh.rotation.x = -Math.PI / 2;
+    fillMesh.position.z = offsetZ;
+    parent.add(fillMesh);
+
+    // Dashed border
+    const pts = shape.getPoints(32);
+    const pts3D = pts.map(p => new THREE.Vector3(p.x, 0.001, -p.y + offsetZ));
+    pts3D.push(pts3D[0].clone());
+    const borderGeo = new THREE.BufferGeometry().setFromPoints(pts3D);
+    const dashedMat = new THREE.LineDashedMaterial({
+      color, dashSize: 0.08, gapSize: 0.06, transparent: true, opacity: borderOpacity,
+    });
+    const borderLine = new THREE.Line(borderGeo, dashedMat);
+    borderLine.computeLineDistances();
+    parent.add(borderLine);
+
+    // Plus
+    const plusSize = 0.22;
+    const plusMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: plusOpacity });
+    const hPts = [
+      new THREE.Vector3(-plusSize / 2, 0.002, offsetZ),
+      new THREE.Vector3(plusSize / 2, 0.002, offsetZ),
+    ];
+    parent.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(hPts), plusMat));
+    const vPts = [
+      new THREE.Vector3(0, 0.002, offsetZ - plusSize / 2),
+      new THREE.Vector3(0, 0.002, offsetZ + plusSize / 2),
+    ];
+    parent.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(vPts), plusMat));
+  }
+
+  /**
+   * Create a rounded rect THREE.Shape centered at origin.
+   */
+  _roundedRectShape(w, h, r) {
+    const shape = new THREE.Shape();
+    const hw = w / 2, hh = h / 2;
+    shape.moveTo(-hw + r, -hh);
+    shape.lineTo(hw - r, -hh);
+    shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
+    shape.lineTo(hw, hh - r);
+    shape.quadraticCurveTo(hw, hh, hw - r, hh);
+    shape.lineTo(-hw + r, hh);
+    shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
+    shape.lineTo(-hw, -hh + r);
+    shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+    return shape;
   }
 
   _isBlocked(pos, halfW, halfD, parentId) {

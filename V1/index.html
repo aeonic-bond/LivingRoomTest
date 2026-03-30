@@ -275,6 +275,7 @@ canvas.addEventListener('click', (e) => {
         state.set(STATES.PLACING_CHILD, {
           parentId: slotHit.parentId,
           slotGroupId: slotHit.slotGroupId,
+          subSlot: slotHit.subSlot,
           x: hit.x,
           z: hit.z,
         });

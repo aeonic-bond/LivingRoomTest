@@ -18,7 +18,7 @@ const SLOT_GAP = 0.25; // ft edge-to-edge spacing
  * @param {number} [indicatorSize] - when childType is null, use this as the indicator square size
  * @returns {{ x: number, z: number }}
  */
-function getSlotWorldPosition(parentItem, slotConfig, childType, indicatorSize) {
+function getSlotWorldPosition(parentItem, slotConfig, childType, indicatorSize, subSlot) {
   const parentConfig = FURNITURE[parentItem.type];
   const fp = parentConfig.footprint;
   let childFp;
@@ -38,11 +38,29 @@ function getSlotWorldPosition(parentItem, slotConfig, childType, indicatorSize) 
   local.x *= (parentItem.sx || 1);
   local.z *= (parentItem.sz || 1);
 
-  // Rotate local offset by parent rotation
-  const cos = Math.cos(parentItem.rotation || 0);
-  const sin = Math.sin(parentItem.rotation || 0);
-  const rx = local.x * cos - local.z * sin;
-  const rz = local.x * sin + local.z * cos;
+  // Rotate local offset by parent rotation (matches THREE.js rotation.y)
+  const rot = parentItem.rotation || 0;
+  const cos = Math.cos(rot);
+  const sin = Math.sin(rot);
+  let rx = local.x * cos + local.z * sin;
+  let rz = -local.x * sin + local.z * cos;
+
+  // Apply sub-slot offset in world space along the edge normal direction.
+  // Normal = (sin(rot), cos(rot)). Back = toward wall = opposite of normal.
+  if (subSlot) {
+    const side = slotConfig.side;
+    let sideDepth;
+    if (fp.type === 'L') {
+      sideDepth = (side === 'left' || side === 'right') ? fp.hinge.d : fp.hinge.w;
+    } else {
+      sideDepth = (side === 'left' || side === 'right') ? fp.d : fp.w;
+    }
+    const offset = sideDepth / 4;
+    // back = -normal (toward wall), front = +normal (into room)
+    const sign = (subSlot === 'back') ? -1 : 1;
+    rx += sign * Math.sin(rot) * offset;
+    rz += sign * Math.cos(rot) * offset;
+  }
 
   return {
     x: parentItem.x + rx,
