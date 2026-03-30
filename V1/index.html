@@ -6,10 +6,11 @@
 <title>Furniture Configurator</title>
 <link rel="stylesheet" href="globalTokens.css">
 <link rel="stylesheet" href="globalTypography.css">
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@200;300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="PanelController.css">
 <link rel="stylesheet" href="PlacingObjectMenu.css">
 <link rel="stylesheet" href="EditingObjectMenu.css">
+<link rel="stylesheet" href="TestOverlay.css">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; overflow: hidden; }
@@ -108,6 +109,7 @@
 <script src="SlotUtils.js"></script>
 <script src="SlotController.js"></script>
 <script src="EditingObjectMenu.js"></script>
+<script src="TestOverlay.js"></script>
 <script src="TransformController.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════
@@ -172,6 +174,7 @@ cursor.setTransform(transform);
 cursor.setCamController(cam);
 transform._camController = cam;
 const placingMenu = new PlacingObjectMenu(container, state, camera, canvas, pulse, edges, sceneData, ROOM, corners);
+const testOverlay = new TestOverlay(container, { bgColor: '#e8e8e8' });
 const editMenu    = new EditingObjectMenu(container, state, camera, canvas, sceneData, sceneCtrl, ROOM, edges);
 
 // ── State wiring ─────────────────────────────────────────────

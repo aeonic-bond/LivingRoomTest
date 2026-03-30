@@ -3,6 +3,8 @@
   --font-body: "Roboto", sans-serif;
 
   /* ── Type tokens ─────────────────────────────────────────── */
+  --type-action:     normal 300 11px / 1 var(--font-body);
+  --type-label-xsmall: normal 400 13px / 1 var(--font-body);
   --type-label-small: normal 400 12px / 1 var(--font-body);
   --type-label-base:  normal 400 14px / 1 var(--font-body);
 }

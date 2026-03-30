@@ -1,0 +1,210 @@
+.test-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  background: #FEFEFE;
+}
+
+.test-overlay > * {
+  pointer-events: auto;
+}
+
+
+/* ── Multi-card container ────────────────────────────── */
+.to-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-200, 4px);
+  padding: var(--spacer-200, 4px);
+  border: 1px solid #cac0c0;
+  border-radius: 16px;
+}
+
+/* ── Card ────────────────────────────────────────────── */
+.to-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-300, 8px);
+  padding: var(--spacer-300, 8px);
+  background: var(--color-bg-gray-raise);
+  border-radius: var(--radius-large, 12px);
+}
+
+/* ── Title row ───────────────────────────────────────── */
+.to-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-200, 4px);
+  padding: var(--spacer-200, 4px);
+}
+
+.to-title-text {
+  flex: 1;
+  font: var(--type-label-base);
+  color: var(--color-black-base, #000);
+}
+
+.to-more {
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: var(--color-black-base, #000);
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+/* ── White options section ───────────────────────────── */
+.to-options-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-400, 12px);
+  padding: var(--spacer-400, 12px);
+  background: var(--color-white-base, #fff);
+  border-radius: var(--radius-base, 8px);
+}
+
+/* ── Material dropdown row ───────────────────────────── */
+.to-material-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-300, 8px);
+}
+
+.to-material-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-200, 4px);
+  min-width: 0;
+}
+
+.to-material-label {
+  font: var(--type-label-xsmall);
+  color: var(--color-black-base, #000);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.to-color-label {
+  font: var(--type-action);
+  color: var(--color-text-black-off, #494949);
+}
+
+.to-chevron {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+/* ── Full options section (expanded) ──────────────────── */
+.to-options-full {
+  height: 292px;
+  overflow: hidden;
+  padding: var(--spacer-500, 16px);
+}
+
+.to-options-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-700, 24px);
+}
+
+/* ── Material section (in full view) ─────────────────── */
+.to-material-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-300, 8px);
+}
+
+.to-material-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  white-space: nowrap;
+}
+
+.to-material-header .to-color-label {
+  text-align: right;
+}
+
+/* ── Expand/collapse tab ─────────────────────────────── */
+.to-expand-tab {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  background: #efe8e4;
+  padding: var(--spacer-300, 8px);
+  border-radius: 0 0 8px 0;
+  border-top-left-radius: var(--radius-base, 8px);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.to-expand-icon {
+  width: 12px;
+  height: 12px;
+  display: block;
+  opacity: 0.5;
+}
+
+.to-expand-icon-up {
+  transform: rotate(180deg);
+}
+
+/* ── Swatch grid ─────────────────────────────────────── */
+.to-swatch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacer-400, 12px);
+  justify-content: flex-start;
+}
+
+.to-swatch {
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  position: relative;
+}
+
+.to-swatch-square {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-small, 4px);
+}
+
+.to-swatch-bordered {
+  border: 2px solid #e4e1e1;
+}
+
+.to-swatch-active {
+  width: 44px;
+  height: 44px;
+  margin: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.to-swatch-active .to-swatch-square {
+  width: 36px;
+  height: 36px;
+}
+
+.to-swatch-active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--color-black-base, #000);
+  border-radius: var(--radius-base, 8px);
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════
+   VARIANT: Default (current design)
+   ═══════════════════════════════════════════════════════ */
+.v-default .to-card {
+  background: #EFE8E4;
+}
+
