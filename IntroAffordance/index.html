@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IntroAffordance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@200;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../globalTokens.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100vh;
+      background: var(--color-bg-calico-base);
+      color: var(--color-black-base);
+      font-family: var(--font-family-base);
+    }
+
+    /* ── Type utilities ─────────────────────────────────────── */
+    .label-xs-200 { font-size: var(--font-label-xs-200-size); font-weight: var(--font-label-xs-200-weight); }
+    .label-s-400  { font-size: var(--font-label-s-400-size);  font-weight: var(--font-label-s-400-weight); }
+    .label-m-400  { font-size: var(--font-label-m-400-size);  font-weight: var(--font-label-m-400-weight); }
+    .label-m-500  { font-size: var(--font-label-m-500-size);  font-weight: var(--font-label-m-500-weight); }
+    .action-m-500 { font-size: var(--font-action-m-500-size); font-weight: var(--font-action-m-500-weight); }
+
+    #stage { width: 100%; height: 100%; }
+
+    /* ── KnownSKU layout ────────────────────────────────────── */
+    .known-sku {
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Scene ----------------------------------------------------*/
+    .scene-container {
+      position: relative;
+      flex: 1 0 0;
+      min-width: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    .scene-canvas {
+      position: absolute;
+      inset: 0;
+    }
+    .scene-canvas canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Side panel ----------------------------------------------*/
+    .side-panel {
+      flex: 0 0 300px;
+      width: 300px;
+      height: 100%;
+      background: var(--color-bg-calico-base);
+      border-left: 1px solid var(--color-bg-calico-shade);
+      padding: var(--spacer-500);
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+
+    /* Collage card */
+    .collage {
+      width: 100%;
+    }
+    .collage-objects {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      background: var(--color-white-base);
+      border-radius: var(--spacer-200);
+      box-shadow: 2px 4px 4px 0 rgba(198, 193, 192, 0.5);
+      position: relative;
+    }
+    .collage-objects .img-wrap {
+      position: absolute;
+      inset: 28.36% 17.91% 39.3% 17.91%;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .collage-objects .img-wrap img {
+      position: absolute;
+      left: 0;
+      top: -6.39%;
+      width: 100%;
+      height: 111.89%;
+      max-width: none;
+    }
+
+    /* Object card */
+    .object-card {
+      width: 100%;
+      background: var(--color-white-base);
+      border: 1px solid var(--color-bg-calico-border);
+      border-radius: var(--radius-base);
+      padding: var(--spacer-200);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .object-card .title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--spacer-300);
+    }
+    .object-card .title .menu {
+      width: 24px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .object-card .title .menu::before {
+      /* vertical 3-dot menu */
+      content: '';
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--color-black-base);
+      box-shadow:
+        0 -7px 0 var(--color-black-base),
+        0  7px 0 var(--color-black-base);
+    }
+
+    .object-card .properties {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacer-200);
+      padding: var(--spacer-200) var(--spacer-300);
+    }
+
+    .property-type {
+      width: 100%;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      padding: var(--spacer-200) var(--spacer-400);
+      background: var(--color-bg-calico-base);
+      border: 1px solid var(--color-bg-calico-shade);
+      border-radius: var(--spacer-200);
+    }
+
+    .property-color {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--spacer-200) var(--spacer-400);
+      background: rgba(161, 149, 129, 0.1);
+      border: 1px solid var(--color-bg-calico-shade);
+      border-radius: var(--radius-small);
+    }
+    .property-color .label-stack {
+      display: flex;
+      flex-direction: column;
+    }
+    .property-color .swatch-wrap {
+      width: 36px;
+      height: 36px;
+      padding: var(--spacer-200);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .property-color .swatch {
+      width: 100%;
+      height: 100%;
+      background: #a19581;
+      border-radius: var(--radius-small);
+    }
+
+    .object-card .cost {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--spacer-300);
+    }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    // IntroAffordance — opening-moment animation showcase for the configurator.
+    //
+    // Two cases to solve:
+    //   1. KNOWN_SKU — a SKU is already placed; the scene itself must teach
+    //      the user that child slots (cushions, arms, legs, etc.) are tappable.
+    //      No persistent bottom menu.
+    //   2. ZERO_SKU  — nothing placed yet; intro must invite the user to
+    //      bring something into the scene. (Parked for later.)
+
+    const Case = { KNOWN_SKU: 'known_sku', ZERO_SKU: 'zero_sku' };
+
+    // Image assets (Figma localhost MCP server — temporary; collage only)
+    const ASSETS = {
+      sofaPersp: 'http://localhost:3845/assets/38d26695e63b771c9e4cc155dafe3e3f0869feb4.png',
+    };
+
+    const MODEL_URL = './assets/white-couch-sofa/source/Untitled.glb';
+
+    // ── 3D scene ─────────────────────────────────────────────
+    // Top-down ortho camera locked to the +Y axis. Designed for the future
+    // case where camera could orbit, but for now perspective is frozen.
+    const SELECTION_PAD_PX = 24;
+    const SCENE_TOP_OFFSET_PX = 120;
+    // Pair-with slot dimensions, in inches.
+    const SLOT_GAP = 4;
+    const SIDE_TABLE_WIDTH = 30;
+    const COFFEE_TABLE_DEPTH = 33;
+
+    function initScene(mount) {
+      const scene = new THREE.Scene();
+      scene.background = null;
+
+      // World group — model + lights + floor live here so the intro
+      // animation can rotate the entire scene as a rigid unit.
+      const world = new THREE.Group();
+      scene.add(world);
+
+      // Selection shadow — white rounded plane on the floor under the
+      // selected object. Geometry is rebuilt on resize so the 24px screen
+      // padding stays correct as wpp changes.
+      const shadowMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+      });
+      const shadowMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), shadowMat);
+      shadowMesh.rotation.x = -Math.PI / 2; // lay flat on XZ
+      shadowMesh.visible = false;
+      world.add(shadowMesh);
+
+      // Outline points for a rounded rectangle in the XY plane (use a
+       // -π/2 X-rotation to lay flat on XZ). Returns a closed path so it
+       // can drive a THREE.Line / LineDashedMaterial.
+      function roundedRectOutlinePoints(w, d, radius, segs = 8) {
+        const r = Math.min(radius, w / 2, d / 2);
+        const pts = [];
+        const x0 = -w / 2, y0 = -d / 2;
+        const arc = (cx, cy, a0, a1) => {
+          for (let i = 1; i <= segs; i++) {
+            const t = i / segs;
+            const a = a0 + t * (a1 - a0);
+            pts.push(new THREE.Vector3(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0));
+          }
+        };
+        pts.push(new THREE.Vector3(x0 + r, y0, 0));
+        pts.push(new THREE.Vector3(x0 + w - r, y0, 0));
+        arc(x0 + w - r, y0 + r, -Math.PI / 2, 0);
+        pts.push(new THREE.Vector3(x0 + w, y0 + d - r, 0));
+        arc(x0 + w - r, y0 + d - r, 0, Math.PI / 2);
+        pts.push(new THREE.Vector3(x0 + r, y0 + d, 0));
+        arc(x0 + r, y0 + d - r, Math.PI / 2, Math.PI);
+        pts.push(new THREE.Vector3(x0, y0 + r, 0));
+        arc(x0 + r, y0 + r, Math.PI, 3 * Math.PI / 2);
+        pts.push(new THREE.Vector3(x0 + r, y0, 0));
+        return pts;
+      }
+
+      // Reusable rounded-rect plane geometry builder. `radius` is in
+      // world units (inches).
+      function makeRoundedRectGeometry(w, d, radius) {
+        const r = Math.min(radius, w / 2, d / 2);
+        const shape = new THREE.Shape();
+        const x0 = -w / 2, z0 = -d / 2;
+        shape.moveTo(x0 + r, z0);
+        shape.lineTo(x0 + w - r, z0);
+        shape.quadraticCurveTo(x0 + w, z0, x0 + w, z0 + r);
+        shape.lineTo(x0 + w, z0 + d - r);
+        shape.quadraticCurveTo(x0 + w, z0 + d, x0 + w - r, z0 + d);
+        shape.lineTo(x0 + r, z0 + d);
+        shape.quadraticCurveTo(x0, z0 + d, x0, z0 + d - r);
+        shape.lineTo(x0, z0 + r);
+        shape.quadraticCurveTo(x0, z0, x0 + r, z0);
+        return new THREE.ShapeGeometry(shape);
+      }
+
+      // Slots are rebuilt every resize so their depth/width tracks the
+      // padded shadow footprint as wpp changes.
+      const slots = []; // { side, mesh }
+
+      function buildShadowGeometry(wppNow) {
+        const padWorld = SELECTION_PAD_PX * wppNow;
+        const shadowW = halfX * 2 + padWorld * 2;
+        const shadowD = halfZ * 2 + padWorld * 2;
+        const r = 12 * wppNow; // ~radius-large
+        shadowMesh.geometry.dispose();
+        shadowMesh.geometry = makeRoundedRectGeometry(shadowW, shadowD, r);
+        rebuildSlots(padWorld);
+      }
+
+      function rebuildSlots(padWorld) {
+        if (!slots.length) return;
+        const slotRadius = 4;
+        const paddedHalfX = halfX + padWorld;
+        const paddedHalfZ = halfZ + padWorld;
+        for (const slot of slots) {
+          let w, d, x, z;
+          if (slot.side === 'left') {
+            w = SIDE_TABLE_WIDTH;
+            d = paddedHalfZ * 2;          // matches padded shadow depth
+            x = -paddedHalfX - SLOT_GAP - w / 2;
+            z = 0;
+          } else if (slot.side === 'right') {
+            w = SIDE_TABLE_WIDTH;
+            d = paddedHalfZ * 2;
+            x =  paddedHalfX + SLOT_GAP + w / 2;
+            z = 0;
+          } else { // front
+            w = paddedHalfX * 2;          // matches padded shadow width
+            d = COFFEE_TABLE_DEPTH;
+            x = 0;
+            z =  paddedHalfZ + SLOT_GAP + d / 2;
+          }
+          // Hit mesh — match the visual outline footprint.
+          slot.mesh.geometry.dispose();
+          slot.mesh.geometry = makeRoundedRectGeometry(w, d, slotRadius);
+          slot.mesh.position.x = x;
+          slot.mesh.position.z = z;
+          // Dashed outline.
+          slot.line.geometry.dispose();
+          slot.line.geometry = new THREE.BufferGeometry()
+            .setFromPoints(roundedRectOutlinePoints(w, d, slotRadius));
+          slot.line.computeLineDistances();
+        }
+      }
+
+      // Lights — soft top-down setup so the topdown view reads cleanly.
+      world.add(new THREE.AmbientLight(0xffffff, 0.9));
+      const key = new THREE.DirectionalLight(0xffffff, 1.1);
+      key.position.set(2, 5, 3);
+      world.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.4);
+      fill.position.set(-3, 2, -2);
+      world.add(fill);
+
+      // Ortho camera — frustum sized in resize() once we know the aspect.
+      // Position/far updated after the model loads, since model units vary.
+      const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 1000);
+      orthoCam.position.set(0, 10, 0);
+      orthoCam.up.set(0, 0, -1); // so +Z points "down" on screen
+      orthoCam.lookAt(0, 0, 0);
+
+      // Perspective ring camera — rides a horizontal ring around the
+      // model: angle around Y, radius from the center, and an independent
+      // height (Y).
+      let perspCam = null;
+      // Spherical orbit camera — camera is constrained to a hemisphere
+      // above the model. Polar = 0 puts the camera straight overhead;
+      // polar = π/2 puts it level with the model.
+      // Two view modes — both ride a hemisphere centered on the model,
+      // each with its own polar ring AND radius. P toggles between them;
+      // lateral drag works in either.
+      const GROUND_POLAR_REL = 1.0;
+      const ELEVATED_POLAR_REL = 0.5;
+      const GROUND_RADIUS_MULT = 3;
+      const ELEVATED_RADIUS_MULT = 4;
+      const LAUNCH_AZIMUTH = Math.PI / 2;
+      // ── Hemisphere definitions ─────────────────────────────
+      // The "default" hemisphere is the steady-state shell the camera
+      // rides during interaction. The "launch" hemisphere is a one-shot
+      // smaller shell centered on the couch that morphs into the default
+      // during the intro transition.
+      const GROUND_CENTER = new THREE.Vector3(0, 0, 12);  // 1ft in front
+      const ELEVATED_CENTER = new THREE.Vector3(0, 0, 24); // 2ft in front
+      const LAUNCH_CENTER = new THREE.Vector3(0, 0, 0);    // couch center
+      const POLAR_MIN = 0.001;
+      const POLAR_MAX = Math.PI * 0.45; // lowest snap (ground ring)
+      const GROUND_POLAR = POLAR_MIN + (POLAR_MAX - POLAR_MIN) * GROUND_POLAR_REL;
+      const ELEVATED_POLAR = POLAR_MIN + (POLAR_MAX - POLAR_MIN) * ELEVATED_POLAR_REL;
+      const ring = {
+        azimuth: LAUNCH_AZIMUTH,
+        polar: GROUND_POLAR,
+        radius: 1,
+        center: new THREE.Vector3(0, 0, 0),
+      };
+      function updateRingCamera() {
+        if (!perspCam) return;
+        perspCam.up.set(0, 1, 0);
+        const sinP = Math.sin(ring.polar);
+        const cosP = Math.cos(ring.polar);
+        perspCam.position.set(
+          ring.center.x + sinP * Math.cos(ring.azimuth) * ring.radius,
+          ring.center.y + cosP * ring.radius,
+          ring.center.z + sinP * Math.sin(ring.azimuth) * ring.radius,
+        );
+        perspCam.lookAt(ring.center);
+      }
+
+      let activeCam = orthoCam;
+      let currentMode = 'ground'; // 'ground' | 'elevated'
+
+      // Transition state — animates between perspective ring view and the
+      // top-down ortho view by morphing a single perspective camera's
+      // FOV/position toward a "fake ortho" state, then snapping to the
+      // real orthoCam at the end (and vice-versa). This stays inside
+      // valid perspective projection space the whole time, which avoids
+      // the cartoony lerp artifacts of blending projection matrices.
+      const TRANSITION_MS = 1600;
+      let transition = null; // { startMs, to: 'ortho' | 'persp' }
+      // Slots are hidden by default. They reveal in two ways:
+      //   1. A 1s flash whenever the camera lands in the elevated view
+      //      (single pulse: 0 → 1 → 0).
+      //   2. Hover — stays at opacity 1 while the cursor is over a slot.
+      const SLOT_FLASH_MS = 4000;
+      let slotFlashStart = null;
+      function updateSlotOpacity() {
+        let flash = 0;
+        if (slotFlashStart !== null) {
+          const t = (performance.now() - slotFlashStart) / SLOT_FLASH_MS;
+          if (t >= 1) {
+            slotFlashStart = null;
+          } else {
+            // Hold at full opacity for the first 3s, then ease-out fade
+            // over the final 1s.
+            const HOLD = 3 / 4; // 3s of 4s total
+            if (t <= HOLD) {
+              flash = 1;
+            } else {
+              const fadeT = (t - HOLD) / (1 - HOLD);
+              flash = Math.pow(1 - fadeT, 3);
+            }
+          }
+        }
+        for (const s of slots) {
+          s.lineMat.opacity = s === hoveredSlot ? 1 : flash;
+        }
+      }
+      const easeInOutSine = (t) => -(Math.cos(Math.PI * t) - 1) / 2;
+      const RING_FOV = 45;
+
+      function startTransition(toMode) {
+        if (!perspCam || !modelLoaded) return;
+        const fromPolar = ring.polar;
+        const fromAzimuth = ring.azimuth;
+        const fromCenter = ring.center.clone();
+        const fromRadius = ring.radius;
+        const toRadius = modelRadius *
+          (toMode === 'elevated' ? ELEVATED_RADIUS_MULT : GROUND_RADIUS_MULT);
+        const toPolar = toMode === 'elevated' ? ELEVATED_POLAR : GROUND_POLAR;
+        // When entering elevated view, snap azimuth to the nearest of the
+        // 4 cardinal directions (0, π/2, π, 3π/2), biasing toward π/2 and
+        // 3π/2 (sides) on ties. Going to ground keeps the current azimuth.
+        let toAzimuth = fromAzimuth;
+        if (toMode === 'elevated') {
+          const TWO_PI = Math.PI * 2;
+          const norm = (x) => ((x % TWO_PI) + TWO_PI) % TWO_PI;
+          const cardinals = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2];
+          const fromNorm = norm(fromAzimuth);
+          const EPS = 1e-6;
+          let best = cardinals[0];
+          let bestDist = Infinity;
+          for (const c of cardinals) {
+            const raw = Math.abs(fromNorm - c);
+            const d = Math.min(raw, TWO_PI - raw);
+            const isSide = c === Math.PI / 2 || c === 3 * Math.PI / 2;
+            const biased = d - (isSide ? EPS : 0);
+            if (biased < bestDist) {
+              bestDist = biased;
+              best = c;
+            }
+          }
+          // Pick the equivalent angle of `best` that is within π of
+          // fromAzimuth so the lerp takes the short way around.
+          let delta = norm(best - fromAzimuth);
+          if (delta > Math.PI) delta -= TWO_PI;
+          toAzimuth = fromAzimuth + delta;
+        }
+        transition = {
+          startMs: performance.now(),
+          to: toMode,
+          fromPolar, toPolar,
+          fromAzimuth, toAzimuth,
+          fromCenter,
+          toCenter: (toMode === 'elevated' ? ELEVATED_CENTER : GROUND_CENTER).clone(),
+          fromRadius, toRadius,
+        };
+        currentMode = toMode;
+      }
+
+      function applyRing() {
+        const sinP = Math.sin(ring.polar);
+        const cosP = Math.cos(ring.polar);
+        perspCam.position.set(
+          ring.center.x + sinP * Math.cos(ring.azimuth) * ring.radius,
+          ring.center.y + cosP * ring.radius,
+          ring.center.z + sinP * Math.sin(ring.azimuth) * ring.radius,
+        );
+        perspCam.lookAt(ring.center);
+      }
+
+      function updateTransition() {
+        if (!transition) return;
+        const t = Math.min(1, (performance.now() - transition.startMs) / TRANSITION_MS);
+        const e = easeInOutSine(t);
+        ring.polar = transition.fromPolar +
+          (transition.toPolar - transition.fromPolar) * e;
+        ring.azimuth = transition.fromAzimuth +
+          (transition.toAzimuth - transition.fromAzimuth) * e;
+        ring.center.lerpVectors(transition.fromCenter, transition.toCenter, e);
+        ring.radius = transition.fromRadius +
+          (transition.toRadius - transition.fromRadius) * e;
+        applyRing();
+        perspCam.up.set(0, 1, 0);
+        perspCam.updateProjectionMatrix();
+        perspCam.updateMatrixWorld(true);
+        activeCam = perspCam;
+        if (t >= 1) {
+          azimuthFree = ring.azimuth;
+          if (transition.to === 'elevated') slotFlashStart = performance.now();
+          transition = null;
+        }
+      }
+
+      // Alias kept so the rest of the load handler can keep using `camera`.
+      const camera = orthoCam;
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      mount.appendChild(renderer.domElement);
+
+
+      // Size the ortho frustum so the model's actual footprint (X, Z) fits
+      // tightly in the canvas — whichever axis is the constraint touches
+      // the frame, the other axis gets the leftover space.
+      let halfX = 1;
+      let halfZ = 1;
+      let modelRadius = 1;
+      let modelLoaded = false;
+      function resize() {
+        const w = mount.clientWidth;
+        const h = mount.clientHeight;
+        if (!w || !h) return;
+        renderer.setSize(w, h, false);
+        const aspect = w / h;
+        // Lock the couch's width to 60% of the scene's width.
+        const WIDTH_FRACTION = 0.5;
+        const frustumHalfWidth = halfX / WIDTH_FRACTION;
+        // Shift the view up by SCENE_TOP_OFFSET_PX (in screen pixels) by
+        // offsetting the frustum vertically in world units.
+        const wpp = (frustumHalfWidth * 2) / w;
+        const offsetWorld = SCENE_TOP_OFFSET_PX * wpp;
+        orthoCam.left = -frustumHalfWidth;
+        orthoCam.right = frustumHalfWidth;
+        orthoCam.top = frustumHalfWidth / aspect - offsetWorld;
+        orthoCam.bottom = -frustumHalfWidth / aspect - offsetWorld;
+        orthoCam.updateProjectionMatrix();
+        if (perspCam) {
+          perspCam.aspect = aspect;
+          perspCam.updateProjectionMatrix();
+        }
+        if (modelLoaded) buildShadowGeometry(wpp);
+      }
+
+      const ro = new ResizeObserver(resize);
+      ro.observe(mount);
+
+      // Load the GLB.
+      const loader = new GLTFLoader();
+      loader.load(
+        MODEL_URL,
+        (gltf) => {
+          const model = gltf.scene;
+          // Center on origin and measure footprint for ortho sizing.
+          // Some GLBs are Z-up (Blender / 3D Warehouse default). If the
+          // bounding box's Y dimension is the smallest, the model is Y-up
+          // already; otherwise rotate -90° on X to bring Z-up into Y-up.
+          let box = new THREE.Box3().setFromObject(model);
+          let size = box.getSize(new THREE.Vector3());
+          if (size.z < size.y) {
+            model.rotation.x = -Math.PI / 2;
+            model.updateMatrixWorld(true);
+            box = new THREE.Box3().setFromObject(model);
+            size = box.getSize(new THREE.Vector3());
+          }
+          // Normalize to real-world inches: Reese is an 85" sofa, so scale
+          // the model uniformly so its X dimension reads as 85.
+          const TARGET_WIDTH_IN = 85;
+          const scale = TARGET_WIDTH_IN / size.x;
+          model.scale.setScalar(scale);
+          model.updateMatrixWorld(true);
+          box = new THREE.Box3().setFromObject(model);
+          size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          model.position.sub(center);
+          halfX = size.x / 2;
+          halfZ = size.z / 2;
+          const halfY = size.y / 2;
+          modelRadius = Math.max(halfX, halfY, halfZ);
+
+          // Add the centered model into the world group.
+          world.add(model);
+          world.rotation.set(0, 0, 0);
+
+          // Place the selection shadow on the floor under the model.
+          shadowMesh.position.y = -halfY - 0.01;
+          shadowMesh.visible = true;
+
+          // ── Pair-with slots ───────────────────────────────
+          // White rounded rectangles on the floor flanking the couch.
+          // Geometry/position are filled in by rebuildSlots() which is
+          // called from buildShadowGeometry() so they always track the
+          // padded shadow footprint.
+          const slotY = -halfY - 0.005;
+          for (const side of ['left', 'right', 'front']) {
+            // Invisible hit mesh — receives the raycast.
+            const hitMat = new THREE.MeshBasicMaterial({
+              transparent: true,
+              opacity: 0,
+              depthWrite: false,
+              side: THREE.DoubleSide,
+            });
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), hitMat);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.position.y = slotY;
+            mesh.userData.side = side;
+            // Dashed white outline child — what the user actually sees.
+            const lineMat = new THREE.LineDashedMaterial({
+              color: 0x48392e, // calico-border — visible on calico-base bg
+              dashSize: 4,
+              gapSize: 4,
+              transparent: true,
+              opacity: 0, // hidden by default; revealed on hover/flash
+            });
+            const line = new THREE.Line(new THREE.BufferGeometry(), lineMat);
+            mesh.add(line);
+            world.add(mesh);
+            slots.push({ side, mesh, line, lineMat });
+          }
+          // Push camera above the model and extend far plane so nothing clips,
+          // regardless of the model's source units (m / cm / inches).
+          const camDist = Math.max(size.y, halfX, halfZ) * 4 + 1;
+          camera.position.set(0, camDist, 0);
+          camera.up.set(0, 0, -1);
+          camera.near = 0.01;
+          camera.far = camDist * 4;
+          camera.lookAt(0, 0, 0);
+
+          // Build the perspective ring camera up front so we can start
+          // the launch transition (perspective → ortho) immediately.
+          const aspect = mount.clientWidth / mount.clientHeight;
+          perspCam = new THREE.PerspectiveCamera(45, aspect, 0.1, modelRadius * 100);
+          // Launch hemisphere — slightly smaller shell centered on the
+          // couch. The launch transition morphs this into the default
+          // hemisphere (larger radius, offset center).
+          ring.radius = modelRadius * GROUND_RADIUS_MULT;
+          ring.center.copy(LAUNCH_CENTER);
+          ring.azimuth = LAUNCH_AZIMUTH;
+          ring.polar = GROUND_POLAR;
+          updateRingCamera();
+          activeCam = perspCam;
+          modelLoaded = true;
+          resize();
+          // Launch transition: start on the ground ring, animate up to
+          // the elevated ring.
+          startTransition('elevated');
+          console.log('[IntroAffordance] model loaded', {
+            sizeX: size.x, sizeY: size.y, sizeZ: size.z, camDist,
+          });
+        },
+        undefined,
+        (err) => console.error('GLB load failed:', err)
+      );
+
+      // Press "P" to animate between ortho and perspective ring camera.
+      window.addEventListener('keydown', (e) => {
+        if (!modelLoaded) return;
+        if (e.key !== 'p' && e.key !== 'P') return;
+        startTransition(currentMode === 'ground' ? 'elevated' : 'ground');
+      });
+
+      // ── Pointer input + raycasting ────────────────────────
+      // Pointer-event intent tracking: every pointerdown is a potential
+      // click; once the pointer crosses DRAG_THRESHOLD, intent flips to
+      // drag and the mouseup is no longer a click. Hover raycasting runs
+      // on every pointermove regardless of state.
+      const AZIMUTH_SNAPS = 16;
+      const AZIMUTH_STEP = (Math.PI * 2) / AZIMUTH_SNAPS;
+      let azimuthFree = ring.azimuth;
+
+      const DRAG_THRESHOLD = 6; // px before intent commits to drag
+      let pointerDown = false;
+      let intentIsDrag = false;
+      let downX = 0, downY = 0;
+      let lastX = 0;
+      const raycaster = new THREE.Raycaster();
+      const ndc = new THREE.Vector2();
+      let hoveredSlot = null;
+
+      function setNdcFromEvent(e) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      }
+
+      function pickSlot() {
+        raycaster.setFromCamera(ndc, activeCam);
+        const meshes = slots.map((s) => s.mesh);
+        const hit = raycaster.intersectObjects(meshes, false)[0];
+        if (!hit) return null;
+        return slots.find((s) => s.mesh === hit.object) || null;
+      }
+
+      function setHovered(slot) {
+        if (hoveredSlot === slot) return;
+        if (hoveredSlot) hoveredSlot.lineMat.color.set(0x48392e); // calico-border
+        hoveredSlot = slot;
+        if (hoveredSlot) hoveredSlot.lineMat.color.set(0x000000);
+        renderer.domElement.style.cursor = hoveredSlot ? 'pointer' : '';
+      }
+
+      renderer.domElement.addEventListener('pointerdown', (e) => {
+        if (transition) return;
+        pointerDown = true;
+        intentIsDrag = false;
+        downX = e.clientX;
+        downY = e.clientY;
+        lastX = e.clientX;
+        renderer.domElement.setPointerCapture(e.pointerId);
+      });
+
+      renderer.domElement.addEventListener('pointermove', (e) => {
+        // Hover raycast — always.
+        setNdcFromEvent(e);
+        if (!pointerDown) setHovered(pickSlot());
+
+        if (!pointerDown || transition) return;
+        const dx = e.clientX - lastX;
+        lastX = e.clientX;
+        // Promote to drag intent once threshold crossed.
+        if (!intentIsDrag) {
+          const totalDx = e.clientX - downX;
+          const totalDy = e.clientY - downY;
+          if (Math.hypot(totalDx, totalDy) >= DRAG_THRESHOLD) {
+            intentIsDrag = true;
+            setHovered(null);
+          }
+        }
+        if (intentIsDrag) {
+          azimuthFree += dx * 0.005;
+          const snappedAz = Math.round(azimuthFree / AZIMUTH_STEP) * AZIMUTH_STEP;
+          if (snappedAz !== ring.azimuth) {
+            ring.azimuth = snappedAz;
+            updateRingCamera();
+          }
+        }
+      });
+
+      renderer.domElement.addEventListener('pointerup', (e) => {
+        if (!pointerDown) return;
+        pointerDown = false;
+        try { renderer.domElement.releasePointerCapture(e.pointerId); } catch {}
+        if (!intentIsDrag && !transition) {
+          // Treat as a click.
+          setNdcFromEvent(e);
+          const slot = pickSlot();
+          if (slot) console.log('[slot click]', slot.side);
+        } else if (intentIsDrag && !transition) {
+          const azDeg = THREE.MathUtils.radToDeg(ring.azimuth).toFixed(1);
+          const poDeg = THREE.MathUtils.radToDeg(ring.polar).toFixed(1);
+          console.log(`[ring pose] azimuth: ${azDeg}°  polar: ${poDeg}°`);
+        }
+      });
+
+      renderer.domElement.addEventListener('pointercancel', () => {
+        pointerDown = false;
+        intentIsDrag = false;
+      });
+
+      // Wheel zoom intentionally disabled — the hemisphere has a fixed
+      // diameter so the camera always sits on the same shell.
+
+      function tick() {
+        updateTransition();
+        updateSlotOpacity();
+        renderer.render(scene, activeCam);
+        requestAnimationFrame(tick);
+      }
+      tick();
+    }
+
+    function mountKnownSku(stage) {
+      stage.innerHTML = `
+        <div class="known-sku" data-name="KnownSKU">
+          <div class="scene-container" data-name="SceneContainer">
+            <div class="scene-canvas" id="model-mount"></div>
+          </div>
+
+          <aside class="side-panel" data-name="SidePanel">
+            <div class="collage" data-name="Collage">
+              <div class="collage-objects" data-name="CollageObjects">
+                <div class="img-wrap">
+                  <img src="${ASSETS.sofaPersp}" alt="" />
+                </div>
+              </div>
+            </div>
+
+            <div class="object-card" data-name="Object">
+              <div class="title">
+                <p class="label-m-500">Reese Sofa</p>
+                <span class="menu" aria-hidden="true"></span>
+              </div>
+
+              <div class="properties">
+                <div class="property-type">
+                  <p class="label-s-400">85" Two-Cushion Sofa</p>
+                </div>
+
+                <div class="property-color">
+                  <div class="label-stack">
+                    <p class="label-s-400">Flax</p>
+                    <p class="label-xs-200">Sumner Plain Weave</p>
+                  </div>
+                  <div class="swatch-wrap">
+                    <div class="swatch"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cost">
+                <p class="label-xs-200">Total</p>
+                <p class="label-s-400">$1400</p>
+              </div>
+            </div>
+          </aside>
+        </div>
+      `;
+    }
+
+    function mountZeroSku(stage) {
+      // TODO: zero-SKU intro affordance choreography
+    }
+
+    const params = new URLSearchParams(location.search);
+    const activeCase = params.get('case') === Case.ZERO_SKU
+      ? Case.ZERO_SKU
+      : Case.KNOWN_SKU;
+
+    const stage = document.getElementById('stage');
+    if (activeCase === Case.KNOWN_SKU) {
+      mountKnownSku(stage);
+      const modelMount = document.getElementById('model-mount');
+      if (modelMount) initScene(modelMount);
+    } else {
+      mountZeroSku(stage);
+    }
+  </script>
+</body>
+</html>

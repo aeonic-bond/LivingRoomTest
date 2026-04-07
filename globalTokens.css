@@ -28,14 +28,35 @@
   --radius-large: 12px;
 
   /* ── Color ───────────────────────────────────────────────── */
-  --color-white-base:      #ffffff;
-  --color-black-base:      #000000;
-  --color-bg-gray-sink:    #f1f1f1;
-  --color-text-black-off:  #494949;
-  --color-text-gray-base:            #d9d9d9;
-  --color-divider-gray-base:         #cccccc;
-  --color-divider-gray-fade:         #e0e0e0;
-  --color-special-whitepickerstroke: #dedede;
+  --color-white-base:                #FFFFFF;
+  --color-black-base:                #000000;
+  --color-bg-calico-base:            #FBF8F6;
+  --color-bg-calico-border:          #48392E;
+  --color-bg-calico-shade:           #EAE6E3;
+  --color-text-black-off:            #494949;
+  --color-text-black-ghost:          #8B8989;
+  --color-divider-gray-base:         #CCCCCC;
+  --color-placeholder-gray:          #D9D9D9;
+  --color-special-whitepickerstroke: #DEDEDE;
+
+  /* ── Typography ──────────────────────────────────────────── */
+  --font-family-base: 'Roboto', -apple-system, system-ui, sans-serif;
+
+  /* Label-XS-200 — 12 / ExtraLight */
+  --font-label-xs-200-size:   12px;
+  --font-label-xs-200-weight: 200;
+  /* Label-S-400 — 13 / Regular */
+  --font-label-s-400-size:    13px;
+  --font-label-s-400-weight:  400;
+  /* Label-M-400 — 14 / Regular */
+  --font-label-m-400-size:    14px;
+  --font-label-m-400-weight:  400;
+  /* Label-M-500 — 14 / Medium */
+  --font-label-m-500-size:    14px;
+  --font-label-m-500-weight:  500;
+  /* Action-M-500 — 12 / Medium */
+  --font-action-m-500-size:   12px;
+  --font-action-m-500-weight: 500;
 
   /* ── Component sizes ─────────────────────────────────────── */
   --primary-card-max-width: 320px;
