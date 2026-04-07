@@ -101,6 +101,13 @@ class SceneData {
   }
 
   /**
+   * Get all children in a specific slot group on a parent.
+   */
+  getChildrenInSlotGroup(parentId, slotGroupId) {
+    return this.items.filter(it => it.parentId === parentId && it.slotGroupId === slotGroupId);
+  }
+
+  /**
    * Export current state as a plain JSON-safe object.
    */
   export() {

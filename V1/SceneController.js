@@ -106,16 +106,17 @@ class SceneController {
 
   // ── Zone highlight ─────────────────────────────────────
 
-  showZone(minX, minZ, maxX, maxZ) {
+  showZone(minX, minZ, maxX, maxZ, color) {
     this.hideZone();
     const w = maxX - minX;
     const d = maxZ - minZ;
+    const zoneColor = color || 0x378ADD;
 
     this._zoneFillTarget  = 0.06;
     this._zoneBorderTarget = 0.2;
 
     const zoneMat = new THREE.MeshBasicMaterial({
-      color: 0x378ADD,
+      color: zoneColor,
       transparent: true,
       opacity: 0,
       depthWrite: false,
@@ -126,7 +127,7 @@ class SceneController {
     this.scene.add(this._zoneFill);
 
     const borderMat = new THREE.LineBasicMaterial({
-      color: 0x378ADD,
+      color: zoneColor,
       transparent: true,
       opacity: 0,
     });
@@ -279,6 +280,7 @@ class SceneController {
     const sinR = Math.abs(Math.sin(rot));
 
     for (const child of children) {
+      if (child._dragging) continue;
       const slotConfig = parentConfig.slotGroups.find(s => s.id === child.slotGroupId);
       if (!slotConfig) continue;
 

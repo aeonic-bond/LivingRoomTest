@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghost Couch</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Space+Mono:wght@400;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #F0F4F8; overflow: hidden; font-family: 'DM Sans', sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+
+  .tabs {
+    position: fixed;
+    top: 24px;
+    left: 16px;
+    right: 16px;
+    display: flex;
+    gap: 2px;
+    background: rgba(0,0,0,0.08);
+    border-radius: 10px;
+    padding: 3px;
+    z-index: 10;
+    backdrop-filter: blur(12px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 8px 16px;
+    border: none;
+    background: transparent;
+    color: rgba(0,0,0,0.4);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .tab:hover { color: rgba(0,0,0,0.6); }
+  .tab.active {
+    background: rgba(255,255,255,0.8);
+    color: #2C2825;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+
+  .label {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(0,0,0,0.3);
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <button class="tab active" data-v="0">V0 · Solid</button>
+  <button class="tab" data-v="1">V1 · Voxel Hull</button>
+  <button class="tab" data-v="6">V6 · Dual Opacity</button>
+  <button class="tab" data-v="7">V7 · Sectional DO</button>
+  <button class="tab" data-v="8">V8 · Chair DO</button>
+  <button class="tab" data-v="9">V9 · Coffee Table</button>
+</div>
+<div class="label">Drag to orbit · Scroll to zoom</div>
+
+<canvas id="c"></canvas>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+
+var canvas = document.getElementById('c');
+var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0xF0F4F8);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+var scene = new THREE.Scene();
+var camera = new THREE.PerspectiveCamera(28, window.innerWidth / window.innerHeight, 0.1, 100);
+
+/* ─── Lighting ───────────────────────────────────────── */
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+
+var spot = new THREE.SpotLight(0xFFE8D0, 2.5);
+spot.position.set(-1.5, 5, 2);
+spot.target.position.set(0, 0.3, 0);
+spot.angle = Math.PI / 5;
+spot.penumbra = 0.6;
+spot.decay = 1.5;
+spot.distance = 15;
+spot.castShadow = false;
+spot.shadow.mapSize.set(2048, 2048);
+spot.shadow.radius = 8;
+spot.shadow.bias = -0.002;
+scene.add(spot);
+scene.add(spot.target);
+
+var fill = new THREE.DirectionalLight(0xD4E4FF, 0.1);
+fill.position.set(3, 2, 3);
+scene.add(fill);
+
+/* ─── Ground ─────────────────────────────────────────── */
+
+var ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(200, 200),
+  new THREE.MeshBasicMaterial({ color: 0xF0F4F8 })
+);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+/* ─── Materials ──────────────────────────────────────── */
+
+var frameMat = new THREE.MeshStandardMaterial({ color: 0x9BA3A9, roughness: 0.85, metalness: 0 });
+var cushionMat = new THREE.MeshStandardMaterial({ color: 0xA8B0B6, roughness: 0.8, metalness: 0 });
+
+/* ─── Rounded box ────────────────────────────────────── */
+
+function roundedBox(w, h, d, r) {
+  r = r || 0.05;
+  var shape = new THREE.Shape();
+  var hw = w / 2 - r;
+  var hh = h / 2 - r;
+  shape.moveTo(-hw, -h / 2);
+  shape.lineTo(hw, -h / 2);
+  shape.quadraticCurveTo(w / 2, -h / 2, w / 2, -hh);
+  shape.lineTo(w / 2, hh);
+  shape.quadraticCurveTo(w / 2, h / 2, hw, h / 2);
+  shape.lineTo(-hw, h / 2);
+  shape.quadraticCurveTo(-w / 2, h / 2, -w / 2, hh);
+  shape.lineTo(-w / 2, -hh);
+  shape.quadraticCurveTo(-w / 2, -h / 2, -hw, -h / 2);
+
+  var geo = new THREE.ExtrudeGeometry(shape, {
+    depth: d,
+    bevelEnabled: true,
+    bevelThickness: r,
+    bevelSize: r,
+    bevelSegments: 10,
+    curveSegments: 16,
+  });
+  geo.center();
+  geo.computeVertexNormals();
+  return geo;
+}
+
+var legGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.16, 10);
+
+/* ─── Helper ─────────────────────────────────────────── */
+
+function add(group, geo, mat, x, y, z, rx) {
+  var m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  if (rx) m.rotation.x = rx;
+  m.castShadow = true;
+  m.receiveShadow = true;
+  group.add(m);
+  return m;
+}
+
+/* ─── V0 — 2-Seater ─────────────────────────────────── */
+
+var v0Group = new THREE.Group();
+
+// Base frame
+add(v0Group, roundedBox(1.4, 0.14, 0.8, 0.05), frameMat, 0, 0.22, 0);
+
+// Seat cushions
+add(v0Group, roundedBox(0.54, 0.12, 0.55, 0.04), cushionMat, -0.29, 0.34, 0.06);
+add(v0Group, roundedBox(0.54, 0.12, 0.55, 0.04), cushionMat, 0.29, 0.34, 0.06);
+
+// Back panel
+add(v0Group, roundedBox(1.24, 0.48, 0.12, 0.04), frameMat, 0, 0.56, -0.32, 0.05);
+
+// Back cushions
+add(v0Group, roundedBox(0.54, 0.34, 0.1, 0.04), cushionMat, -0.29, 0.56, -0.18, 0.08);
+add(v0Group, roundedBox(0.54, 0.34, 0.1, 0.04), cushionMat, 0.29, 0.56, -0.18, 0.08);
+
+// Arms
+add(v0Group, roundedBox(0.12, 0.34, 0.76, 0.04), frameMat, -0.66, 0.4, 0);
+add(v0Group, roundedBox(0.12, 0.34, 0.76, 0.04), frameMat, 0.66, 0.4, 0);
+
+// Legs
+[[-0.55, 0.08, 0.3], [0.55, 0.08, 0.3], [-0.55, 0.08, -0.3], [0.55, 0.08, -0.3]].forEach(function(p) {
+  add(v0Group, legGeo, frameMat, p[0], p[1], p[2]);
+});
+
+scene.add(v0Group);
+
+/* ─── Marching Cubes Lookup Tables (shared) ──────────── */
+
+var edgeTable = [0x0,0x109,0x203,0x30a,0x406,0x50f,0x605,0x70c,0x80c,0x905,0xa0f,0xb06,0xc0a,0xd03,0xe09,0xf00,0x190,0x99,0x393,0x29a,0x596,0x49f,0x795,0x69c,0x99c,0x895,0xb9f,0xa96,0xd9a,0xc93,0xf99,0xe90,0x230,0x339,0x33,0x13a,0x636,0x73f,0x435,0x53c,0xa3c,0xb35,0x83f,0x936,0xe3a,0xf33,0xc39,0xd30,0x3a0,0x2a9,0x1a3,0xaa,0x7a6,0x6af,0x5a5,0x4ac,0xbac,0xaa5,0x9af,0x8a6,0xfaa,0xea3,0xda9,0xca0,0x460,0x569,0x663,0x76a,0x66,0x16f,0x265,0x36c,0xc6c,0xd65,0xe6f,0xf66,0x86a,0x963,0xa69,0xb60,0x5f0,0x4f9,0x7f3,0x6fa,0x1f6,0xff,0x3f5,0x2fc,0xdfc,0xcf5,0xfff,0xef6,0x9fa,0x8f3,0xbf9,0xaf0,0x650,0x759,0x453,0x55a,0x256,0x35f,0x55,0x15c,0xe5c,0xf55,0xc5f,0xd56,0xa5a,0xb53,0x859,0x950,0x7c0,0x6c9,0x5c3,0x4ca,0x3c6,0x2cf,0x1c5,0xcc,0xfcc,0xec5,0xdcf,0xcc6,0xbca,0xac3,0x9c9,0x8c0,0x8c0,0x9c9,0xac3,0xbca,0xcc6,0xdcf,0xec5,0xfcc,0xcc,0x1c5,0x2cf,0x3c6,0x4ca,0x5c3,0x6c9,0x7c0,0x950,0x859,0xb53,0xa5a,0xd56,0xc5f,0xf55,0xe5c,0x15c,0x55,0x35f,0x256,0x55a,0x453,0x759,0x650,0xaf0,0xbf9,0x8f3,0x9fa,0xef6,0xfff,0xcf5,0xdfc,0x2fc,0x3f5,0xff,0x1f6,0x6fa,0x7f3,0x4f9,0x5f0,0xb60,0xa69,0x963,0x86a,0xf66,0xe6f,0xd65,0xc6c,0x36c,0x265,0x16f,0x66,0x76a,0x663,0x569,0x460,0xca0,0xda9,0xea3,0xfaa,0x8a6,0x9af,0xaa5,0xbac,0x4ac,0x5a5,0x6af,0x7a6,0xaa,0x1a3,0x2a9,0x3a0,0xd30,0xc39,0xf33,0xe3a,0x936,0x83f,0xb35,0xa3c,0x53c,0x435,0x73f,0x636,0x13a,0x33,0x339,0x230,0xe90,0xf99,0xc93,0xd9a,0xa96,0xb9f,0x895,0x99c,0x69c,0x795,0x49f,0x596,0x29a,0x393,0x99,0x190,0xf00,0xe09,0xd03,0xc0a,0xb06,0xa0f,0x905,0x80c,0x70c,0x605,0x50f,0x406,0x30a,0x203,0x109,0x0];
+var triTable = [[-1],[0,8,3,-1],[0,1,9,-1],[1,8,3,9,8,1,-1],[1,2,10,-1],[0,8,3,1,2,10,-1],[9,2,10,0,2,9,-1],[2,8,3,2,10,8,10,9,8,-1],[3,11,2,-1],[0,11,2,8,11,0,-1],[1,9,0,2,3,11,-1],[1,11,2,1,9,11,9,8,11,-1],[3,10,1,11,10,3,-1],[0,10,1,0,8,10,8,11,10,-1],[3,9,0,3,11,9,11,10,9,-1],[9,8,10,10,8,11,-1],[4,7,8,-1],[4,3,0,7,3,4,-1],[0,1,9,8,4,7,-1],[4,1,9,4,7,1,7,3,1,-1],[1,2,10,8,4,7,-1],[3,4,7,3,0,4,1,2,10,-1],[9,2,10,9,0,2,8,4,7,-1],[2,10,9,2,9,7,2,7,3,7,9,4,-1],[8,4,7,3,11,2,-1],[11,4,7,11,2,4,2,0,4,-1],[9,0,1,8,4,7,2,3,11,-1],[4,7,11,9,4,11,9,11,2,9,2,1,-1],[3,10,1,3,11,10,7,8,4,-1],[1,11,10,1,4,11,1,0,4,7,11,4,-1],[4,7,8,9,0,11,9,11,10,11,0,3,-1],[4,7,11,4,11,9,9,11,10,-1],[9,5,4,-1],[9,5,4,0,8,3,-1],[0,5,4,1,5,0,-1],[8,5,4,8,3,5,3,1,5,-1],[1,2,10,9,5,4,-1],[3,0,8,1,2,10,4,9,5,-1],[5,2,10,5,4,2,4,0,2,-1],[2,10,5,3,2,5,3,5,4,3,4,8,-1],[9,5,4,2,3,11,-1],[0,11,2,0,8,11,4,9,5,-1],[0,5,4,0,1,5,2,3,11,-1],[2,1,5,2,5,8,2,8,11,4,8,5,-1],[10,3,11,10,1,3,9,5,4,-1],[4,9,5,0,8,1,8,10,1,8,11,10,-1],[5,4,0,5,0,11,5,11,10,11,0,3,-1],[5,4,8,5,8,10,10,8,11,-1],[9,7,8,5,7,9,-1],[9,3,0,9,5,3,5,7,3,-1],[0,7,8,0,1,7,1,5,7,-1],[1,5,3,3,5,7,-1],[9,7,8,9,5,7,10,1,2,-1],[10,1,2,9,5,0,5,3,0,5,7,3,-1],[8,0,2,8,2,5,8,5,7,10,5,2,-1],[2,10,5,2,5,3,3,5,7,-1],[7,9,5,7,8,9,3,11,2,-1],[9,5,7,9,7,2,9,2,0,2,7,11,-1],[2,3,11,0,1,8,1,7,8,1,5,7,-1],[11,2,1,11,1,7,7,1,5,-1],[9,5,8,8,5,7,10,1,3,10,3,11,-1],[5,7,0,5,0,9,7,11,0,1,0,10,11,10,0,-1],[11,10,0,11,0,3,10,5,0,8,0,7,5,7,0,-1],[11,10,5,7,11,5,-1],[10,6,5,-1],[0,8,3,5,10,6,-1],[9,0,1,5,10,6,-1],[1,8,3,1,9,8,5,10,6,-1],[1,6,5,2,6,1,-1],[1,6,5,1,2,6,3,0,8,-1],[9,6,5,9,0,6,0,2,6,-1],[5,9,8,5,8,2,5,2,6,3,2,8,-1],[2,3,11,10,6,5,-1],[11,0,8,11,2,0,10,6,5,-1],[0,1,9,2,3,11,5,10,6,-1],[5,10,6,1,9,2,9,11,2,9,8,11,-1],[6,3,11,6,5,3,5,1,3,-1],[0,8,11,0,11,5,0,5,1,5,11,6,-1],[3,11,6,0,3,6,0,6,5,0,5,9,-1],[6,5,9,6,9,11,11,9,8,-1],[5,10,6,4,7,8,-1],[4,3,0,4,7,3,6,5,10,-1],[1,9,0,5,10,6,8,4,7,-1],[10,6,5,1,9,7,1,7,3,7,9,4,-1],[6,1,2,6,5,1,4,7,8,-1],[1,2,5,5,2,6,3,0,4,3,4,7,-1],[8,4,7,9,0,5,0,6,5,0,2,6,-1],[7,3,9,7,9,4,3,2,9,5,9,6,2,6,9,-1],[3,11,2,7,8,4,10,6,5,-1],[5,10,6,4,7,2,4,2,0,2,7,11,-1],[0,1,9,4,7,8,2,3,11,5,10,6,-1],[9,2,1,9,11,2,9,4,11,7,11,4,5,10,6,-1],[8,4,7,3,11,5,3,5,1,5,11,6,-1],[5,1,11,5,11,6,1,0,11,7,11,4,0,4,11,-1],[0,5,9,0,6,5,0,3,6,11,6,3,8,4,7,-1],[6,5,9,6,9,11,4,7,9,7,11,9,-1],[10,4,9,6,4,10,-1],[4,10,6,4,9,10,0,8,3,-1],[10,0,1,10,6,0,6,4,0,-1],[8,3,1,8,1,6,8,6,4,6,1,10,-1],[1,4,9,1,2,4,2,6,4,-1],[3,0,8,1,2,9,2,4,9,2,6,4,-1],[0,2,4,4,2,6,-1],[8,3,2,8,2,4,4,2,6,-1],[10,4,9,10,6,4,11,2,3,-1],[0,8,2,2,8,11,4,9,10,4,10,6,-1],[3,11,2,0,1,6,0,6,4,6,1,10,-1],[6,4,1,6,1,10,4,8,1,2,1,11,8,11,1,-1],[9,6,4,9,3,6,9,1,3,11,6,3,-1],[8,11,1,8,1,0,11,6,1,9,1,4,6,4,1,-1],[3,11,6,3,6,0,0,6,4,-1],[6,4,8,11,6,8,-1],[7,10,6,7,8,10,8,9,10,-1],[0,7,3,0,10,7,0,9,10,6,7,10,-1],[10,6,7,1,10,7,1,7,8,1,8,0,-1],[10,6,7,10,7,1,1,7,3,-1],[1,2,6,1,6,8,1,8,9,8,6,7,-1],[2,6,9,2,9,1,6,7,9,0,9,3,7,3,9,-1],[7,8,0,7,0,6,6,0,2,-1],[7,3,2,6,7,2,-1],[2,3,11,10,6,8,10,8,9,8,6,7,-1],[2,0,7,2,7,11,0,9,7,6,7,10,9,10,7,-1],[1,8,0,1,7,8,1,10,7,6,7,10,2,3,11,-1],[11,2,1,11,1,7,10,6,1,6,7,1,-1],[8,9,6,8,6,7,9,1,6,11,6,3,1,3,6,-1],[0,9,1,11,6,7,-1],[7,8,0,7,0,6,3,11,0,11,6,0,-1],[7,11,6,-1],[7,6,11,-1],[3,0,8,11,7,6,-1],[0,1,9,11,7,6,-1],[8,1,9,8,3,1,11,7,6,-1],[10,1,2,6,11,7,-1],[1,2,10,3,0,8,6,11,7,-1],[2,9,0,2,10,9,6,11,7,-1],[6,11,7,2,10,3,10,8,3,10,9,8,-1],[7,2,3,6,2,7,-1],[7,0,8,7,6,0,6,2,0,-1],[2,7,6,2,3,7,0,1,9,-1],[1,6,2,1,8,6,1,9,8,8,7,6,-1],[10,7,6,10,1,7,1,3,7,-1],[10,7,6,1,7,10,1,8,7,1,0,8,-1],[0,3,7,0,7,10,0,10,9,6,10,7,-1],[7,6,10,7,10,8,8,10,9,-1],[6,8,4,11,8,6,-1],[3,6,11,3,0,6,0,4,6,-1],[8,6,11,8,4,6,9,0,1,-1],[9,4,6,9,6,3,9,3,1,11,3,6,-1],[6,8,4,6,11,8,2,10,1,-1],[1,2,10,3,0,11,0,6,11,0,4,6,-1],[4,11,8,4,6,11,0,2,9,2,10,9,-1],[10,9,3,10,3,2,9,4,3,11,3,6,4,6,3,-1],[8,2,3,8,4,2,4,6,2,-1],[0,4,2,4,6,2,-1],[1,9,0,2,3,4,2,4,6,4,3,8,-1],[1,9,4,1,4,2,2,4,6,-1],[8,1,3,8,6,1,8,4,6,6,10,1,-1],[10,1,0,10,0,6,6,0,4,-1],[4,6,3,4,3,8,6,10,3,0,3,9,10,9,3,-1],[10,9,4,6,10,4,-1],[4,9,5,7,6,11,-1],[0,8,3,4,9,5,11,7,6,-1],[5,0,1,5,4,0,7,6,11,-1],[11,7,6,8,3,4,3,5,4,3,1,5,-1],[9,5,4,10,1,2,7,6,11,-1],[6,11,7,1,2,10,0,8,3,4,9,5,-1],[7,6,11,5,4,10,4,2,10,4,0,2,-1],[3,4,8,3,5,4,3,2,5,10,5,2,11,7,6,-1],[7,2,3,7,6,2,5,4,9,-1],[9,5,4,0,8,6,0,6,2,6,8,7,-1],[3,6,2,3,7,6,1,5,0,5,4,0,-1],[6,2,8,6,8,7,2,1,8,4,8,5,1,5,8,-1],[9,5,4,10,1,6,1,7,6,1,3,7,-1],[1,6,10,1,7,6,1,0,7,8,7,0,9,5,4,-1],[4,0,10,4,10,5,0,3,10,6,10,7,3,7,10,-1],[7,6,10,7,10,8,5,4,10,4,8,10,-1],[6,9,5,6,11,9,11,8,9,-1],[3,6,11,0,6,3,0,5,6,0,9,5,-1],[0,11,8,0,5,11,0,1,5,5,6,11,-1],[6,11,3,6,3,5,5,3,1,-1],[1,2,10,9,5,11,9,11,8,11,5,6,-1],[0,11,3,0,6,11,0,9,6,5,6,9,1,2,10,-1],[11,8,5,11,5,6,8,0,5,10,5,2,0,2,5,-1],[6,11,3,6,3,5,2,10,3,10,5,3,-1],[5,8,9,5,2,8,5,6,2,3,8,2,-1],[9,5,6,9,6,0,0,6,2,-1],[1,5,8,1,8,0,5,6,8,3,8,2,6,2,8,-1],[1,5,6,2,1,6,-1],[1,3,6,1,6,10,3,8,6,5,6,9,8,9,6,-1],[10,1,0,10,0,6,9,5,0,5,6,0,-1],[0,3,8,5,6,10,-1],[10,5,6,-1],[11,5,10,7,5,11,-1],[11,5,10,11,7,5,8,3,0,-1],[5,11,7,5,10,11,1,9,0,-1],[10,7,5,10,11,7,9,8,1,8,3,1,-1],[11,1,2,11,7,1,7,5,1,-1],[0,8,3,1,2,7,1,7,5,7,2,11,-1],[9,7,5,9,2,7,9,0,2,2,11,7,-1],[7,5,2,7,2,11,5,9,2,3,2,8,9,8,2,-1],[2,5,10,2,3,5,3,7,5,-1],[8,2,0,8,5,2,8,7,5,10,2,5,-1],[9,0,1,5,10,3,5,3,7,3,10,2,-1],[9,8,2,9,2,1,8,7,2,10,2,5,7,5,2,-1],[1,3,5,3,7,5,-1],[0,8,7,0,7,1,1,7,5,-1],[9,0,3,9,3,5,5,3,7,-1],[9,8,7,5,9,7,-1],[5,8,4,5,10,8,10,11,8,-1],[5,0,4,5,11,0,5,10,11,11,3,0,-1],[0,1,9,8,4,10,8,10,11,10,4,5,-1],[10,11,4,10,4,5,11,3,4,9,4,1,3,1,4,-1],[2,5,1,2,8,5,2,11,8,4,5,8,-1],[0,4,11,0,11,3,4,5,11,2,11,1,5,1,11,-1],[0,2,5,0,5,9,2,11,5,4,5,8,11,8,5,-1],[9,4,5,2,11,3,-1],[2,5,10,3,5,2,3,4,5,3,8,4,-1],[5,10,2,5,2,4,4,2,0,-1],[3,10,2,3,5,10,3,8,5,4,5,8,0,1,9,-1],[5,10,2,5,2,4,1,9,2,9,4,2,-1],[8,4,5,8,5,3,3,5,1,-1],[0,4,5,1,0,5,-1],[8,4,5,8,5,3,9,0,5,0,3,5,-1],[9,4,5,-1],[4,11,7,4,9,11,9,10,11,-1],[0,8,3,4,9,7,9,11,7,9,10,11,-1],[1,10,11,1,11,4,1,4,0,7,4,11,-1],[3,1,4,3,4,8,1,10,4,7,4,11,10,11,4,-1],[4,11,7,9,11,4,9,2,11,9,1,2,-1],[9,7,4,9,11,7,9,1,11,2,11,1,0,8,3,-1],[11,7,4,11,4,2,2,4,0,-1],[11,7,4,11,4,2,8,3,4,3,2,4,-1],[2,9,10,2,7,9,2,3,7,7,4,9,-1],[9,10,7,9,7,4,10,2,7,0,7,8,2,8,7,-1],[3,7,10,3,10,2,7,4,10,1,10,0,4,0,10,-1],[1,10,2,8,7,4,-1],[4,9,1,4,1,7,7,1,3,-1],[4,9,1,4,1,7,0,8,1,8,7,1,-1],[4,0,3,7,4,3,-1],[4,8,7,-1],[9,10,8,10,11,8,-1],[3,0,9,3,9,11,11,9,10,-1],[0,1,10,0,10,8,8,10,11,-1],[3,1,10,11,3,10,-1],[1,2,11,1,11,9,9,11,8,-1],[3,0,9,3,9,11,1,2,9,2,11,9,-1],[0,2,11,8,0,11,-1],[3,2,11,-1],[2,3,8,2,8,10,10,8,9,-1],[9,10,2,0,9,2,-1],[2,3,8,2,8,10,0,1,8,1,10,8,-1],[1,10,2,-1],[1,3,8,9,1,8,-1],[0,9,1,-1],[0,3,8,-1],[-1]];
+
+/* ─── V1 — Voxel Hull (marching cubes fusion) ────────── */
+
+var v1Group = new THREE.Group();
+var v1Mat = new THREE.ShaderMaterial({
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  uniforms: {
+    uColor: { value: new THREE.Color(0xE0EAF4) },
+    uRimColor: { value: new THREE.Color(0xF4F8FC) },
+    uOpacity: { value: 0.25 },
+    uRimPower: { value: 2.0 },
+    uRimStrength: { value: 0.75 },
+    uLightDir: { value: new THREE.Vector3(-3, 6, 2).normalize() },
+  },
+  vertexShader: [
+    'varying vec3 vNormal;',
+    'varying vec3 vViewDir;',
+    'varying vec3 vWorldNormal;',
+    'varying vec3 vWorldPos;',
+    'varying vec3 vReflect;',
+    'void main() {',
+    '  vNormal = normalize(normalMatrix * normal);',
+    '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+    '  vViewDir = normalize(-mv.xyz);',
+    '  vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);',
+    '  vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;',
+    '  vec3 worldViewDir = normalize(vWorldPos - cameraPosition);',
+    '  vReflect = reflect(worldViewDir, vWorldNormal);',
+    '  gl_Position = projectionMatrix * mv;',
+    '}'
+  ].join('\n'),
+  fragmentShader: [
+    'uniform vec3 uColor;',
+    'uniform vec3 uRimColor;',
+    'uniform float uOpacity;',
+    'uniform float uRimPower;',
+    'uniform float uRimStrength;',
+    'uniform vec3 uLightDir;',
+    'varying vec3 vNormal;',
+    'varying vec3 vViewDir;',
+    'varying vec3 vWorldNormal;',
+    'varying vec3 vWorldPos;',
+    'varying vec3 vReflect;',
+    'void main() {',
+    '  vec3 n = normalize(vNormal);',
+    '  vec3 v = normalize(vViewDir);',
+    '  vec3 wn = normalize(vWorldNormal);',
+    '',
+    '  float fresnel = 1.0 - abs(dot(v, n));',
+    '  fresnel = pow(fresnel, uRimPower);',
+    '',
+    '  float diff = dot(wn, uLightDir) * 0.3 + 0.7;',
+    '',
+    // Blinn-Phong specular
+    '  vec3 h = normalize(uLightDir + v);',
+    '  float spec = pow(max(dot(wn, h), 0.0), 64.0);',
+    '  vec3 specColor = vec3(1.0, 0.97, 0.92) * spec * 1.2;',
+    '',
+    // Fake environment reflection — gradient sky dome
+    '  vec3 r = normalize(vReflect);',
+    '  float skyGrad = r.y * 0.5 + 0.5;',
+    '  vec3 envTop = vec3(0.85, 0.92, 1.0);',
+    '  vec3 envBot = vec3(1.0, 0.98, 0.95);',
+    '  vec3 envColor = mix(envBot, envTop, skyGrad);',
+    '  float envStrength = fresnel * 0.25;',
+    '',
+    '  vec3 col = mix(uColor * diff, uRimColor, fresnel * uRimStrength);',
+    '  col += specColor;',
+    '  col = mix(col, envColor, envStrength);',
+    '',
+    '  float alpha = mix(uOpacity, uOpacity + 0.45, fresnel) + spec * 0.4;',
+    '  gl_FragColor = vec4(col, min(alpha, 1.0));',
+    '}'
+  ].join('\n'),
+});
+
+// Define couch parts as simple box volumes for voxelization
+// Each: [centerX, centerY, centerZ, halfW, halfH, halfD]
+var couchBoxes = [
+  // Base frame
+  [0, 0.22, 0, 0.7, 0.07, 0.4],
+  // Seat cushions
+  [-0.29, 0.34, 0.06, 0.27, 0.06, 0.275],
+  [0.29, 0.34, 0.06, 0.27, 0.06, 0.275],
+  // Back panel
+  [0, 0.56, -0.32, 0.62, 0.24, 0.06],
+  // Back cushions
+  [-0.29, 0.56, -0.18, 0.27, 0.17, 0.05],
+  [0.29, 0.56, -0.18, 0.27, 0.17, 0.05],
+  // Arms
+  [-0.66, 0.4, 0, 0.06, 0.17, 0.38],
+  [0.66, 0.4, 0, 0.06, 0.17, 0.38],
+];
+
+// Voxelize: fill a 3D grid, then extract surface with marching cubes
+(function buildVoxelHull() {
+  var RES = 80; // grid resolution
+  var PAD = 0.15; // padding around bounds
+
+  // Find bounding box of all parts
+  var minX = Infinity, minY = Infinity, minZ = Infinity;
+  var maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  couchBoxes.forEach(function(b) {
+    minX = Math.min(minX, b[0] - b[3]);
+    minY = Math.min(minY, b[1] - b[4]);
+    minZ = Math.min(minZ, b[2] - b[5]);
+    maxX = Math.max(maxX, b[0] + b[3]);
+    maxY = Math.max(maxY, b[1] + b[4]);
+    maxZ = Math.max(maxZ, b[2] + b[5]);
+  });
+  minX -= PAD; minY -= PAD; minZ -= PAD;
+  maxX += PAD; maxY += PAD; maxZ += PAD;
+
+  var sizeX = maxX - minX;
+  var sizeY = maxY - minY;
+  var sizeZ = maxZ - minZ;
+
+  // Build scalar field: distance to nearest box surface (negative = inside)
+  var NX = RES, NY = Math.ceil(RES * sizeY / sizeX), NZ = Math.ceil(RES * sizeZ / sizeX);
+  var field = new Float32Array((NX + 1) * (NY + 1) * (NZ + 1));
+
+  function idx(ix, iy, iz) {
+    return ix + (NX + 1) * (iy + (NY + 1) * iz);
+  }
+
+  // For each grid point, compute signed distance to union of rounded boxes
+  var ROUND = 0.04; // corner rounding radius
+  for (var iz = 0; iz <= NZ; iz++) {
+    for (var iy = 0; iy <= NY; iy++) {
+      for (var ix = 0; ix <= NX; ix++) {
+        var px = minX + (ix / NX) * sizeX;
+        var py = minY + (iy / NY) * sizeY;
+        var pz = minZ + (iz / NZ) * sizeZ;
+
+        // SDF for union = min of all individual SDFs
+        var minDist = Infinity;
+        for (var bi = 0; bi < couchBoxes.length; bi++) {
+          var b = couchBoxes[bi];
+          // Rounded box SDF
+          var dx = Math.max(Math.abs(px - b[0]) - b[3] + ROUND, 0);
+          var dy = Math.max(Math.abs(py - b[1]) - b[4] + ROUND, 0);
+          var dz = Math.max(Math.abs(pz - b[2]) - b[5] + ROUND, 0);
+          var outside = Math.sqrt(dx * dx + dy * dy + dz * dz) - ROUND;
+          var inside = Math.min(
+            Math.max(
+              Math.abs(px - b[0]) - b[3] + ROUND,
+              Math.abs(py - b[1]) - b[4] + ROUND,
+              Math.abs(pz - b[2]) - b[5] + ROUND
+            ), 0
+          );
+          var dist = outside + inside;
+          minDist = Math.min(minDist, dist);
+        }
+        field[idx(ix, iy, iz)] = minDist;
+      }
+    }
+  }
+
+  // Marching cubes — extract iso-surface at distance = 0
+  var positions = [];
+
+  for (var iz = 0; iz < NZ; iz++) {
+    for (var iy = 0; iy < NY; iy++) {
+      for (var ix = 0; ix < NX; ix++) {
+        // 8 corner values
+        var v0 = field[idx(ix, iy, iz)];
+        var v1 = field[idx(ix+1, iy, iz)];
+        var v2 = field[idx(ix+1, iy+1, iz)];
+        var v3 = field[idx(ix, iy+1, iz)];
+        var v4 = field[idx(ix, iy, iz+1)];
+        var v5 = field[idx(ix+1, iy, iz+1)];
+        var v6 = field[idx(ix+1, iy+1, iz+1)];
+        var v7 = field[idx(ix, iy+1, iz+1)];
+
+        var cubeIndex = 0;
+        if (v0 < 0) cubeIndex |= 1;
+        if (v1 < 0) cubeIndex |= 2;
+        if (v2 < 0) cubeIndex |= 4;
+        if (v3 < 0) cubeIndex |= 8;
+        if (v4 < 0) cubeIndex |= 16;
+        if (v5 < 0) cubeIndex |= 32;
+        if (v6 < 0) cubeIndex |= 64;
+        if (v7 < 0) cubeIndex |= 128;
+
+        if (edgeTable[cubeIndex] === 0) continue;
+
+        // Corner positions
+        var cx = minX + ix / NX * sizeX;
+        var cy = minY + iy / NY * sizeY;
+        var cz = minZ + iz / NZ * sizeZ;
+        var dx = sizeX / NX;
+        var dy = sizeY / NY;
+        var dz = sizeZ / NZ;
+
+        var corners = [
+          [cx, cy, cz], [cx+dx, cy, cz], [cx+dx, cy+dy, cz], [cx, cy+dy, cz],
+          [cx, cy, cz+dz], [cx+dx, cy, cz+dz], [cx+dx, cy+dy, cz+dz], [cx, cy+dy, cz+dz]
+        ];
+        var vals = [v0,v1,v2,v3,v4,v5,v6,v7];
+
+        var edgePairs = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+        var vertList = new Array(12);
+        for (var e = 0; e < 12; e++) {
+          if (edgeTable[cubeIndex] & (1 << e)) {
+            var a = edgePairs[e][0], b = edgePairs[e][1];
+            var t = vals[a] / (vals[a] - vals[b]);
+            vertList[e] = [
+              corners[a][0] + t * (corners[b][0] - corners[a][0]),
+              corners[a][1] + t * (corners[b][1] - corners[a][1]),
+              corners[a][2] + t * (corners[b][2] - corners[a][2]),
+            ];
+          }
+        }
+
+        var tris = triTable[cubeIndex];
+        for (var ti = 0; tris[ti] !== -1; ti += 3) {
+          positions.push(
+            vertList[tris[ti]][0], vertList[tris[ti]][1], vertList[tris[ti]][2],
+            vertList[tris[ti+1]][0], vertList[tris[ti+1]][1], vertList[tris[ti+1]][2],
+            vertList[tris[ti+2]][0], vertList[tris[ti+2]][1], vertList[tris[ti+2]][2]
+          );
+        }
+      }
+    }
+  }
+
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+
+  var mesh = new THREE.Mesh(geo, v1Mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  v1Group.add(mesh);
+})();
+
+// Tapered legs — separate meshes (too thin for voxel grid)
+var v1LegGeo = new THREE.CylinderGeometry(0.032, 0.018, 0.16, 12);
+var v1LegMat = new THREE.MeshStandardMaterial({
+  color: 0x9BA3A9, roughness: 0.7, metalness: 0,
+  transparent: true, opacity: 0.35,
+});
+[[-0.55, 0.08, 0.3], [0.55, 0.08, 0.3], [-0.55, 0.08, -0.3], [0.55, 0.08, -0.3]].forEach(function(p) {
+  var leg = new THREE.Mesh(v1LegGeo, v1LegMat);
+  leg.position.set(p[0], p[1], p[2]);
+  leg.castShadow = true;
+  v1Group.add(leg);
+});
+
+
+
+scene.add(v1Group);
+v1Group.visible = false;
+
+/* ─── V6 — Dual Opacity (frame + cushions as separate hulls) ── */
+/* ─── V6 — Dual Opacity (frame + cushions as separate hulls) ── */
+
+var v6Group = new THREE.Group();
+
+// Frame material — more transparent
+var v6FrameMat = v1Mat.clone();
+v6FrameMat.uniforms.uOpacity = { value: 0.18 };
+v6FrameMat.uniforms.uColor = { value: new THREE.Color(0xD0DAE4) };
+v6FrameMat.uniforms.uRimColor = { value: new THREE.Color(0xECF0F5) };
+v6FrameMat.uniforms.uRimPower = { value: 2.0 };
+v6FrameMat.uniforms.uRimStrength = { value: 0.75 };
+v6FrameMat.uniforms.uLightDir = { value: new THREE.Vector3(-3, 6, 2).normalize() };
+
+// Cushion material — more opaque, slightly warmer
+var v6CushMat = v1Mat.clone();
+v6CushMat.uniforms.uOpacity = { value: 0.45 };
+v6CushMat.uniforms.uColor = { value: new THREE.Color(0xE8EEF4) };
+v6CushMat.uniforms.uRimColor = { value: new THREE.Color(0xF6F9FC) };
+v6CushMat.uniforms.uRimPower = { value: 2.0 };
+v6CushMat.uniforms.uRimStrength = { value: 0.75 };
+v6CushMat.uniforms.uLightDir = { value: new THREE.Vector3(-3, 6, 2).normalize() };
+
+// Frame boxes (base, back panel, arms)
+var v6FrameBoxes = [
+  [0, 0.22, 0, 0.7, 0.07, 0.4],
+  [0, 0.56, -0.32, 0.62, 0.24, 0.06],
+  [-0.66, 0.4, 0, 0.06, 0.17, 0.38],
+  [0.66, 0.4, 0, 0.06, 0.17, 0.38],
+];
+
+// Cushion boxes (seat + back cushions)
+var v6CushBoxes = [
+  [-0.29, 0.34, 0.06, 0.27, 0.06, 0.275],
+  [0.29, 0.34, 0.06, 0.27, 0.06, 0.275],
+  [-0.29, 0.56, -0.18, 0.27, 0.17, 0.05],
+  [0.29, 0.56, -0.18, 0.27, 0.17, 0.05],
+];
+
+// Shared voxel hull builder
+function buildHull(boxes, material, group) {
+  var RES = 80, PAD = 0.15, ROUND = 0.04;
+  var mnX=Infinity,mnY=Infinity,mnZ=Infinity,mxX=-Infinity,mxY=-Infinity,mxZ=-Infinity;
+  boxes.forEach(function(b){
+    mnX=Math.min(mnX,b[0]-b[3]);mnY=Math.min(mnY,b[1]-b[4]);mnZ=Math.min(mnZ,b[2]-b[5]);
+    mxX=Math.max(mxX,b[0]+b[3]);mxY=Math.max(mxY,b[1]+b[4]);mxZ=Math.max(mxZ,b[2]+b[5]);
+  });
+  mnX-=PAD;mnY-=PAD;mnZ-=PAD;mxX+=PAD;mxY+=PAD;mxZ+=PAD;
+  var sx=mxX-mnX,sy=mxY-mnY,sz=mxZ-mnZ;
+  var NX=RES,NY=Math.ceil(RES*sy/sx),NZ=Math.ceil(RES*sz/sx);
+  var field=new Float32Array((NX+1)*(NY+1)*(NZ+1));
+  function idx(ix,iy,iz){return ix+(NX+1)*(iy+(NY+1)*iz);}
+  for(var iz=0;iz<=NZ;iz++)for(var iy=0;iy<=NY;iy++)for(var ix=0;ix<=NX;ix++){
+    var px=mnX+(ix/NX)*sx,py=mnY+(iy/NY)*sy,pz=mnZ+(iz/NZ)*sz;
+    var md=Infinity;
+    for(var bi=0;bi<boxes.length;bi++){var b=boxes[bi];
+      var dx=Math.max(Math.abs(px-b[0])-b[3]+ROUND,0);
+      var dy=Math.max(Math.abs(py-b[1])-b[4]+ROUND,0);
+      var dz=Math.max(Math.abs(pz-b[2])-b[5]+ROUND,0);
+      var outside=Math.sqrt(dx*dx+dy*dy+dz*dz)-ROUND;
+      var inside=Math.min(Math.max(Math.abs(px-b[0])-b[3]+ROUND,Math.abs(py-b[1])-b[4]+ROUND,Math.abs(pz-b[2])-b[5]+ROUND),0);
+      md=Math.min(md,outside+inside);
+    }
+    field[idx(ix,iy,iz)]=md;
+  }
+  var positions=[];
+  for(var iz=0;iz<NZ;iz++)for(var iy=0;iy<NY;iy++)for(var ix=0;ix<NX;ix++){
+    var v0=field[idx(ix,iy,iz)],v1=field[idx(ix+1,iy,iz)];
+    var v2=field[idx(ix+1,iy+1,iz)],v3=field[idx(ix,iy+1,iz)];
+    var v4=field[idx(ix,iy,iz+1)],v5f=field[idx(ix+1,iy,iz+1)];
+    var v6=field[idx(ix+1,iy+1,iz+1)],v7=field[idx(ix,iy+1,iz+1)];
+    var ci=0;
+    if(v0<0)ci|=1;if(v1<0)ci|=2;if(v2<0)ci|=4;if(v3<0)ci|=8;
+    if(v4<0)ci|=16;if(v5f<0)ci|=32;if(v6<0)ci|=64;if(v7<0)ci|=128;
+    if(edgeTable[ci]===0)continue;
+    var cx=mnX+ix/NX*sx,cy=mnY+iy/NY*sy,cz=mnZ+iz/NZ*sz;
+    var ddx=sx/NX,ddy=sy/NY,ddz=sz/NZ;
+    var corners=[[cx,cy,cz],[cx+ddx,cy,cz],[cx+ddx,cy+ddy,cz],[cx,cy+ddy,cz],[cx,cy,cz+ddz],[cx+ddx,cy,cz+ddz],[cx+ddx,cy+ddy,cz+ddz],[cx,cy+ddy,cz+ddz]];
+    var vals=[v0,v1,v2,v3,v4,v5f,v6,v7];
+    var edgePairs=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+    var vertList=new Array(12);
+    for(var e=0;e<12;e++){if(edgeTable[ci]&(1<<e)){var a=edgePairs[e][0],b=edgePairs[e][1];var t=vals[a]/(vals[a]-vals[b]);vertList[e]=[corners[a][0]+t*(corners[b][0]-corners[a][0]),corners[a][1]+t*(corners[b][1]-corners[a][1]),corners[a][2]+t*(corners[b][2]-corners[a][2])];}}
+    var tris=triTable[ci];
+    for(var ti=0;tris[ti]!==-1;ti+=3){positions.push(vertList[tris[ti]][0],vertList[tris[ti]][1],vertList[tris[ti]][2],vertList[tris[ti+1]][0],vertList[tris[ti+1]][1],vertList[tris[ti+1]][2],vertList[tris[ti+2]][0],vertList[tris[ti+2]][1],vertList[tris[ti+2]][2]);}
+  }
+  var geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geo.computeVertexNormals();
+  var mesh=new THREE.Mesh(geo,material);
+  mesh.castShadow=true;mesh.receiveShadow=true;
+  group.add(mesh);
+}
+
+// Build both hulls
+buildHull(v6FrameBoxes, v6FrameMat, v6Group);
+buildHull(v6CushBoxes, v6CushMat, v6Group);
+
+// Legs
+var v6LegGeo = new THREE.CylinderGeometry(0.032, 0.018, 0.16, 12);
+var v6LegMat = new THREE.MeshStandardMaterial({ color: 0x9BA3A9, roughness: 0.7, metalness: 0, transparent: true, opacity: 0.2 });
+[[-0.55, 0.08, 0.3], [0.55, 0.08, 0.3], [-0.55, 0.08, -0.3], [0.55, 0.08, -0.3]].forEach(function(p) {
+  var leg = new THREE.Mesh(v6LegGeo, v6LegMat);
+  leg.position.set(p[0], p[1], p[2]);
+  leg.castShadow = true;
+  v6Group.add(leg);
+});
+
+// Ground glow
+
+scene.add(v6Group);
+v6Group.visible = false;
+
+/* ─── V7 — Sectional Dual Opacity ────────────────────── */
+
+var v7Group = new THREE.Group();
+
+// Reuse V6 materials — create fresh clones with proper uniforms
+var v7FrameMat = v1Mat.clone();
+v7FrameMat.uniforms.uOpacity = { value: 0.18 };
+v7FrameMat.uniforms.uColor = { value: new THREE.Color(0xD0DAE4) };
+v7FrameMat.uniforms.uRimColor = { value: new THREE.Color(0xECF0F5) };
+v7FrameMat.uniforms.uRimPower = { value: 2.0 };
+v7FrameMat.uniforms.uRimStrength = { value: 0.75 };
+v7FrameMat.uniforms.uLightDir = { value: new THREE.Vector3(-3, 6, 2).normalize() };
+
+var v7CushMat = v1Mat.clone();
+v7CushMat.uniforms.uOpacity = { value: 0.45 };
+v7CushMat.uniforms.uColor = { value: new THREE.Color(0xE8EEF4) };
+v7CushMat.uniforms.uRimColor = { value: new THREE.Color(0xF6F9FC) };
+v7CushMat.uniforms.uRimPower = { value: 2.0 };
+v7CushMat.uniforms.uRimStrength = { value: 0.75 };
+v7CushMat.uniforms.uLightDir = { value: new THREE.Vector3(-3, 6, 2).normalize() };
+
+// Frame: bases, back panel, arms, front rail
+var v7FrameBoxes = [
+  [0, 0.22, 0, 1.05, 0.07, 0.4],
+  [0.58, 0.22, 0.58, 0.35, 0.07, 0.20],
+  [0, 0.56, -0.32, 0.97, 0.24, 0.06],
+  [-1.0, 0.4, 0, 0.06, 0.17, 0.38],
+  [1.0, 0.4, 0, 0.06, 0.17, 0.38],
+  [0.58, 0.28, 0.74, 0.35, 0.09, 0.04],
+];
+
+// Cushions: seat + back
+var v7CushBoxes = [
+  [-0.58, 0.34, 0.06, 0.27, 0.06, 0.275],
+  [0, 0.34, 0.06, 0.27, 0.06, 0.275],
+  [0.58, 0.34, 0.30, 0.27, 0.06, 0.44],
+  [-0.58, 0.56, -0.18, 0.27, 0.17, 0.05],
+  [0, 0.56, -0.18, 0.27, 0.17, 0.05],
+  [0.58, 0.56, -0.18, 0.27, 0.17, 0.05],
+];
+
+buildHull(v7FrameBoxes, v7FrameMat, v7Group);
+buildHull(v7CushBoxes, v7CushMat, v7Group);
+
+// Legs — same as V3
+var v7LegGeo = new THREE.CylinderGeometry(0.032, 0.018, 0.16, 12);
+var v7LegMat = new THREE.MeshStandardMaterial({ color: 0x9BA3A9, roughness: 0.7, metalness: 0, transparent: true, opacity: 0.2 });
+[
+  [-0.88, 0.08, 0.28], [-0.88, 0.08, -0.28],
+  [0.88, 0.08, -0.28], [0.88, 0.08, 0.28],
+  [0.88, 0.08, 0.62], [0.35, 0.08, 0.62],
+  [0.35, 0.08, 0.28], [0.35, 0.08, -0.28],
+].forEach(function(p) {
+  var leg = new THREE.Mesh(v7LegGeo, v7LegMat);
+  leg.position.set(p[0], p[1], p[2]);
+  leg.castShadow = true;
+  v7Group.add(leg);
+});
+
+
+scene.add(v7Group);
+v7Group.visible = false;
+
+/* ─── V8 — Chair Dual Opacity ────────────────────────── */
+
+var v8Group = new THREE.Group();
+
+var v8FrameMat = v1Mat.clone();
+v8FrameMat.uniforms.uOpacity = { value: 0.18 };
+v8FrameMat.uniforms.uColor = { value: new THREE.Color(0xD0DAE4) };
+v8FrameMat.uniforms.uRimColor = { value: new THREE.Color(0xECF0F5) };
+v8FrameMat.uniforms.uRimPower = { value: 2.0 };
+v8FrameMat.uniforms.uRimStrength = { value: 0.75 };
+v8FrameMat.uniforms.uLightDir = { value: new THREE.Vector3(-3, 6, 2).normalize() };
+
+var v8CushMat = v1Mat.clone();
+v8CushMat.uniforms.uOpacity = { value: 0.45 };
+v8CushMat.uniforms.uColor = { value: new THREE.Color(0xE8EEF4) };
+v8CushMat.uniforms.uRimColor = { value: new THREE.Color(0xF6F9FC) };
+v8CushMat.uniforms.uRimPower = { value: 2.0 };
+v8CushMat.uniforms.uRimStrength = { value: 0.75 };
+v8CushMat.uniforms.uLightDir = { value: new THREE.Vector3(-3, 6, 2).normalize() };
+
+// Frame: base, back panel, arms
+var v8FrameBoxes = [
+  [0, 0.22, 0, 0.38, 0.07, 0.38],
+  [0, 0.56, -0.30, 0.30, 0.24, 0.06],
+  [-0.34, 0.4, 0, 0.06, 0.17, 0.38],
+  [0.34, 0.4, 0, 0.06, 0.17, 0.38],
+];
+
+// Cushions: seat + back
+var v8CushBoxes = [
+  [0, 0.34, 0.06, 0.25, 0.06, 0.275],
+  [0, 0.56, -0.16, 0.22, 0.17, 0.05],
+];
+
+buildHull(v8FrameBoxes, v8FrameMat, v8Group);
+buildHull(v8CushBoxes, v8CushMat, v8Group);
+
+// Legs
+var v8LegGeo = new THREE.CylinderGeometry(0.032, 0.018, 0.16, 12);
+var v8LegMat = new THREE.MeshStandardMaterial({ color: 0x9BA3A9, roughness: 0.7, metalness: 0, transparent: true, opacity: 0.2 });
+[[-0.26, 0.08, 0.26], [0.26, 0.08, 0.26], [-0.26, 0.08, -0.26], [0.26, 0.08, -0.26]].forEach(function(p) {
+  var leg = new THREE.Mesh(v8LegGeo, v8LegMat);
+  leg.position.set(p[0], p[1], p[2]);
+  leg.castShadow = true;
+  v8Group.add(leg);
+});
+
+
+scene.add(v8Group);
+v8Group.visible = false;
+
+/* ─── V9 — Coffee Table (dual opacity voxel hull) ────── */
+
+var v9Group = new THREE.Group();
+
+var v9FrameMat = v1Mat.clone();
+v9FrameMat.uniforms.uOpacity = { value: 0.18 };
+v9FrameMat.uniforms.uColor = { value: new THREE.Color(0xD0DAE4) };
+v9FrameMat.uniforms.uRimColor = { value: new THREE.Color(0xECF0F5) };
+v9FrameMat.uniforms.uRimPower = { value: 2.0 };
+v9FrameMat.uniforms.uRimStrength = { value: 0.75 };
+v9FrameMat.uniforms.uLightDir = { value: new THREE.Vector3(-3, 6, 2).normalize() };
+
+var v9TopMat = v1Mat.clone();
+v9TopMat.uniforms.uOpacity = { value: 0.4 };
+v9TopMat.uniforms.uColor = { value: new THREE.Color(0xE8EEF4) };
+v9TopMat.uniforms.uRimColor = { value: new THREE.Color(0xF6F9FC) };
+v9TopMat.uniforms.uRimPower = { value: 2.0 };
+v9TopMat.uniforms.uRimStrength = { value: 0.75 };
+v9TopMat.uniforms.uLightDir = { value: new THREE.Vector3(-3, 6, 2).normalize() };
+
+// Rectangular coffee table — low, wide
+// Frame: legs + stretchers
+var v9FrameBoxes = [
+  // 4 legs (thicker for voxel grid)
+  [-0.45, 0.14, 0.22, 0.04, 0.14, 0.04],
+  [0.45, 0.14, 0.22, 0.04, 0.14, 0.04],
+  [-0.45, 0.14, -0.22, 0.04, 0.14, 0.04],
+  [0.45, 0.14, -0.22, 0.04, 0.14, 0.04],
+
+  // Long stretchers (front + back)
+  [0, 0.06, 0.22, 0.42, 0.02, 0.03],
+  [0, 0.06, -0.22, 0.42, 0.02, 0.03],
+
+  // Short stretchers (sides)
+  [-0.45, 0.06, 0, 0.03, 0.02, 0.19],
+  [0.45, 0.06, 0, 0.03, 0.02, 0.19],
+
+  // Lower shelf
+  [0, 0.10, 0, 0.42, 0.02, 0.19],
+];
+
+// Top surface — more opaque
+var v9TopBoxes = [
+  [0, 0.30, 0, 0.5, 0.03, 0.28],
+];
+
+buildHull(v9FrameBoxes, v9FrameMat, v9Group);
+buildHull(v9TopBoxes, v9TopMat, v9Group);
+
+
+scene.add(v9Group);
+v9Group.visible = false;
+
+/* ─── Tab switching ──────────────────────────────────── */
+
+var tabs = document.querySelectorAll('.tab');
+tabs.forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    tabs.forEach(function(t) { t.classList.remove('active'); });
+    tab.classList.add('active');
+    var v = tab.getAttribute('data-v');
+    v0Group.visible = (v === '0');
+    v1Group.visible = (v === '1');
+    v6Group.visible = (v === '6');
+    v7Group.visible = (v === '7');
+    v8Group.visible = (v === '8');
+    v9Group.visible = (v === '9');
+  });
+});
+
+/* ─── Orbit + Zoom ───────────────────────────────────── */
+
+var isDragging = false, prevX = 0, prevY = 0;
+var targetAx = Math.PI / 4.5, targetAy = 0.35;
+var ax = targetAx, ay = targetAy;
+var R = 4.4;
+var targetR = R;
+var R_MIN = 2.5, R_MAX = 7.0;
+
+canvas.addEventListener('pointerdown', function(e) {
+  isDragging = true; prevX = e.clientX; prevY = e.clientY;
+});
+window.addEventListener('pointerup', function() { isDragging = false; });
+canvas.addEventListener('pointermove', function(e) {
+  if (!isDragging) return;
+  targetAx -= (e.clientX - prevX) * 0.006;
+  targetAy = Math.max(0.08, Math.min(1.2, targetAy + (e.clientY - prevY) * 0.005));
+  prevX = e.clientX; prevY = e.clientY;
+});
+
+canvas.addEventListener('wheel', function(e) {
+  e.preventDefault();
+  targetR = Math.max(R_MIN, Math.min(R_MAX, targetR + e.deltaY * 0.003));
+}, { passive: false });
+
+canvas.addEventListener('touchstart', function(e) {
+  if (e.touches.length === 1) {
+    isDragging = true; prevX = e.touches[0].clientX; prevY = e.touches[0].clientY;
+  }
+  if (e.touches.length === 2) {
+    isDragging = false;
+    pinchStart = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+  }
+}, { passive: true });
+window.addEventListener('touchend', function() { isDragging = false; });
+
+var pinchStart = 0;
+canvas.addEventListener('touchmove', function(e) {
+  if (e.touches.length === 1 && isDragging) {
+    targetAx -= (e.touches[0].clientX - prevX) * 0.006;
+    targetAy = Math.max(0.08, Math.min(1.2, targetAy + (e.touches[0].clientY - prevY) * 0.005));
+    prevX = e.touches[0].clientX; prevY = e.touches[0].clientY;
+  }
+  if (e.touches.length === 2) {
+    var dist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    targetR = Math.max(R_MIN, Math.min(R_MAX, targetR - (dist - pinchStart) * 0.008));
+    pinchStart = dist;
+  }
+}, { passive: true });
+
+/* ─── Loop ───────────────────────────────────────────── */
+
+function loop() {
+  requestAnimationFrame(loop);
+  ax += (targetAx - ax) * 0.08;
+  ay += (targetAy - ay) * 0.08;
+  R += (targetR - R) * 0.08;
+  camera.position.set(
+    Math.sin(ax) * Math.cos(ay) * R,
+    0.3 + Math.sin(ay) * R,
+    Math.cos(ax) * Math.cos(ay) * R
+  );
+  camera.lookAt(0, 0.3, 0);
+  renderer.render(scene, camera);
+}
+loop();
+
+/* ─── Resize ─────────────────────────────────────────── */
+
+function onResize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+</script>
+</body>
+</html>

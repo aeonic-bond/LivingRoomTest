@@ -53,28 +53,52 @@ class SlotController {
     const childW = this._getMaxChildWidth(config);
 
     config.slotGroups.forEach(slotGroup => {
-      // Depth = parent's extent on this side
       const depth = this._getSideDepth(fp, slotGroup.side);
-      const halfW = childW / 2;
-      const halfD = depth / 2;
+      const children = this.sceneData.getChildrenInSlotGroup(parentId, slotGroup.id);
+      const childCount = children.length;
 
-      const pos = getSlotWorldPosition(item, slotGroup, null, childW);
-      const filled = !!this.sceneData.getChildInSlotGroup(parentId, slotGroup.id);
-      const blocked = filled || this._isBlocked(pos, halfW, halfD, parentId);
+      // Determine indicator size and position based on child count
+      let indicatorW, indicatorD, subSlotTarget, pos;
+      if (childCount === 0) {
+        // Empty: full-size indicator centered on side
+        indicatorW = childW;
+        indicatorD = depth;
+        subSlotTarget = null;
+        pos = getSlotWorldPosition(item, slotGroup, null, childW);
+      } else if (childCount === 1) {
+        // Partial: half-size indicator at the empty sub-slot
+        const occupiedSubSlot = children[0].subSlot || 'back';
+        subSlotTarget = (occupiedSubSlot === 'back') ? 'front' : 'back';
+        indicatorW = childW;
+        indicatorD = depth / 2;
+        pos = getSlotWorldPosition(item, slotGroup, null, childW, subSlotTarget);
+      } else {
+        // Full: hidden
+        indicatorW = childW;
+        indicatorD = depth;
+        pos = getSlotWorldPosition(item, slotGroup, null, childW);
+      }
 
-      const mesh = this._buildSlotGroupMesh(childW, depth, item.rotation, slotGroup.side);
+      const halfW = indicatorW / 2;
+      const halfD = indicatorD / 2;
+      const isFull = childCount >= 2;
+      const blocked = isFull || this._isBlocked(pos, halfW, halfD, parentId);
+
+      const mesh = this._buildSlotGroupMesh(indicatorW, indicatorD, item.rotation, slotGroup.side);
       mesh.position.set(item.x, 0.003, item.z);
       mesh.userData.slotGroupId = slotGroup.id;
-      mesh.userData.parentId = parentId;
-      mesh.userData.targetX  = pos.x;
-      mesh.userData.targetZ  = pos.z;
-      mesh.userData.halfW    = halfW;
-      mesh.userData.halfD    = halfD;
+      mesh.userData.side       = slotGroup.side;
+      mesh.userData.parentId   = parentId;
+      mesh.userData.targetX    = pos.x;
+      mesh.userData.targetZ    = pos.z;
+      mesh.userData.halfW      = halfW;
+      mesh.userData.halfD      = halfD;
+      mesh.userData.subSlotTarget = subSlotTarget; // which sub-slot this indicator represents
 
       // Animation state
       mesh.userData.slideT   = 0;
       mesh.userData.hiding   = false;
-      mesh.userData.filled   = filled;
+      mesh.userData.filled   = isFull;
       mesh.visible = !blocked;
 
       this.scene.add(mesh);
@@ -154,7 +178,7 @@ class SlotController {
 
       const slotConfig = config.slotGroups.find(s => s.id === slotId);
       if (!slotConfig) continue;
-      const pos = getSlotWorldPosition(item, slotConfig, null, childW);
+      const pos = getSlotWorldPosition(item, slotConfig, null, childW, g.userData.subSlotTarget);
       g.userData.targetX = pos.x;
       g.userData.targetZ = pos.z;
 
@@ -203,13 +227,16 @@ class SlotController {
       if (!g.visible || g.userData.hiding || g.userData.filled) continue;
       if (this._hitTestRect(g, x, z)) {
         this._setHoveredSlot(slotId);
-        // Determine front/back from cursor's local Z within the slot
-        const localZ = this._getLocalZ(g, x, z);
-        // -Z local = toward edge/wall = back, +Z local = into room = front
-        const subSlot = localZ < 0 ? 'back' : 'front';
-        if (subSlot !== this._activeSubSlot) {
-          this._activeSubSlot = subSlot;
-          this._showSplit(g, subSlot);
+        // Partial state: no split needed, sub-slot is predetermined
+        if (!g.userData.subSlotTarget) {
+          // Empty state: determine front/back from cursor's local Z
+          const localZ = this._getLocalZ(g, x, z);
+          // -Z local = toward edge/wall = back, +Z local = into room = front
+          const subSlot = localZ < 0 ? 'back' : 'front';
+          if (subSlot !== this._activeSubSlot) {
+            this._activeSubSlot = subSlot;
+            this._showSplit(g, subSlot);
+          }
         }
         return;
       }
@@ -240,10 +267,13 @@ class SlotController {
       const g = this._slots[slotId];
       if (!g.visible || g.userData.hiding || g.userData.filled) continue;
       if (this._hitTestRect(g, x, z)) {
+        // Partial state: subSlot is predetermined (the empty one)
+        // Empty state: subSlot from hover detection
+        const subSlot = g.userData.subSlotTarget || this._activeSubSlot || 'back';
         return {
           parentId: g.userData.parentId,
           slotGroupId: g.userData.slotGroupId,
-          subSlot: this._activeSubSlot || 'back',
+          subSlot,
         };
       }
     }
@@ -288,31 +318,14 @@ class SlotController {
 
   _onChildAdd(item) {
     if (!this._slots || item.parentId !== this._parentId) return;
-    const g = this._slots[item.slotGroupId];
-    if (!g) return;
-    g.userData.filled = true;
-    this._setVisible(g, false);
+    // Rebuild to reflect new child count (empty → partial, or partial → full)
+    this.show(this._parentId, true);
   }
 
   _onChildRemove(item) {
     if (!this._slots || item.parentId !== this._parentId) return;
-    const g = this._slots[item.slotGroupId];
-    if (!g) return;
-    g.userData.filled = false;
-
-    // Check if slot position is valid before showing
-    const parentItem = this.sceneData.get(this._parentId);
-    if (!parentItem) return;
-    const config = FURNITURE[parentItem.type];
-    const slotConfig = config.slotGroups.find(s => s.id === item.slotGroupId);
-    if (!slotConfig) return;
-    const childW = this._getMaxChildWidth(config);
-    const pos = getSlotWorldPosition(parentItem, slotConfig, null, childW);
-    if (!this._isBlocked(pos, g.userData.halfW, g.userData.halfD, this._parentId)) {
-      g.userData.targetX = pos.x;
-      g.userData.targetZ = pos.z;
-      this._setVisible(g, true);
-    }
+    // Rebuild to reflect new child count (full → partial, or partial → empty)
+    this.show(this._parentId, true);
   }
 
   // ── Internal ────────────────────────────────────────────

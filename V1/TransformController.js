@@ -166,6 +166,13 @@ class TransformController {
    */
   _getBounds(item) {
     const config = FURNITURE[item.type];
+
+    // Child items: zone from ParentAffinity
+    if (config.childOnly && item.parentId != null) {
+      const zone = ParentAffinity.getZone(item, this.sceneData);
+      if (zone) return zone;
+    }
+
     const fp = config.footprint;
 
     let extLeft, extRight, extUp, extDown;
@@ -290,6 +297,7 @@ class TransformController {
       const dragItem = this.sceneData.get(this.dragItemId);
       this._lastValidX = dragItem ? dragItem.x : 0;
       this._lastValidZ = dragItem ? dragItem.z : 0;
+      if (dragItem) dragItem._dragging = true;
       this.state.set(STATES.TRANSFORM);
       this.canvas.style.cursor = 'grabbing';
       // Show zone
@@ -307,8 +315,18 @@ class TransformController {
 
     // Unified overshoot — dampened elastic + reorientation trigger
     const config = FURNITURE[item.type];
-    const oX = this.overshoot(rawX, bounds.minX, bounds.maxX);
-    const oZ = this.overshoot(rawZ, bounds.minZ, bounds.maxZ);
+    let oX = this.overshoot(rawX, bounds.minX, bounds.maxX);
+    let oZ = this.overshoot(rawZ, bounds.minZ, bounds.maxZ);
+
+    // Child items: suppress overshoot on locked axis
+    if (config.childOnly && item.parentId != null && bounds.slideAxis) {
+      if (bounds.slideAxis === 'z') {
+        oX = { value: bounds.minX, rawOver: 0, direction: 0 };
+      } else {
+        oZ = { value: bounds.minZ, rawOver: 0, direction: 0 };
+      }
+    }
+
     const rawOver = Math.max(oX.rawOver, oZ.rawOver);
 
     // Reorientation check (if past threshold and cooldown expired)
@@ -316,7 +334,36 @@ class TransformController {
       const overDirX = oX.direction;
       const overDirZ = oZ.direction;
 
-      if (config.affinity === 'edge' && item.edgeId != null) {
+      if (config.childOnly && item.parentId != null && item.subSlot) {
+        // Child: flip subSlot front↔back
+        const newSubSlot = item.subSlot === 'front' ? 'back' : 'front';
+        const siblings = this.sceneData.getChildInSlotGroup(item.parentId, item.slotGroupId);
+        const siblingInTarget = siblings && siblings.id !== item.id && siblings.subSlot === newSubSlot;
+
+        if (!siblingInTarget) {
+          this.sceneData.update(item.id, { subSlot: newSubSlot });
+          this._reorientCooldown = 1.0;
+
+          bounds = this._getBounds(item);
+          const newCenter = getSlotWorldPosition(
+            this.sceneData.get(item.parentId),
+            FURNITURE[this.sceneData.get(item.parentId).type].slotGroups.find(s => s.id === item.slotGroupId),
+            item.type, null, newSubSlot
+          );
+          const clampedX = Math.max(bounds.minX, Math.min(bounds.maxX, newCenter.x));
+          const clampedZ = Math.max(bounds.minZ, Math.min(bounds.maxZ, newCenter.z));
+
+          this.sceneData.update(item.id, { x: clampedX, z: clampedZ });
+          this.sceneCtrl._updateMesh(item);
+
+          this._lastValidX = clampedX;
+          this._lastValidZ = clampedZ;
+          this.grabOffsetX = clampedX - pos.x;
+          this.grabOffsetZ = clampedZ - pos.z;
+          this._showItemZone(item);
+          return;
+        }
+      } else if (config.affinity === 'edge' && item.edgeId != null) {
         // Edge: find edge in overshoot direction
         let newEdge = null;
         let bestDot = Infinity;
@@ -569,6 +616,7 @@ class TransformController {
     if (!this.dragging) return;
 
     const item = this.sceneData.get(this.dragItemId);
+    if (item) item._dragging = false;
     this.dragging = false;
     this.didDrag = true;
     this.canvas.style.cursor = '';
@@ -648,6 +696,27 @@ class TransformController {
   _showItemZone(item) {
     const config = FURNITURE[item.type];
     if (!config) return;
+
+    // Child items: green zone strip along sub-slot
+    if (config.childOnly && item.parentId != null) {
+      const zone = ParentAffinity.getZone(item, this.sceneData);
+      if (zone) {
+        const childFp = FURNITURE[item.type].footprint;
+        let vMinX = zone.minX, vMaxX = zone.maxX;
+        let vMinZ = zone.minZ, vMaxZ = zone.maxZ;
+        // Inflate locked axis by child footprint for visual
+        if (zone.minX === zone.maxX) {
+          vMinX -= childFp.w / 2;
+          vMaxX += childFp.w / 2;
+        }
+        if (zone.minZ === zone.maxZ) {
+          vMinZ -= childFp.d / 2;
+          vMaxZ += childFp.d / 2;
+        }
+        this.sceneCtrl.showZone(vMinX, vMinZ, vMaxX, vMaxZ, 0x38725C);
+      }
+      return;
+    }
 
     if (config.affinity === 'none') {
       // Full room
