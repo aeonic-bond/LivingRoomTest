@@ -218,6 +218,7 @@
     };
 
     const MODEL_URL = './assets/white-couch-sofa/source/Untitled.glb';
+    const COFFEE_TABLE_URL = './assets/coffee_table_-_living_room.glb';
 
     // ── 3D scene ─────────────────────────────────────────────
     // Top-down ortho camera locked to the +Y axis. Designed for the future
@@ -298,6 +299,10 @@
       // Slots are rebuilt every resize so their depth/width tracks the
       // padded shadow footprint as wpp changes.
       const slots = []; // { side, mesh }
+      // Ghost coffee table that flashes in sync with the front slot.
+      let ghostCoffeeTable = null;
+      const ghostMaterials = []; // refs so opacity can be tweened in tick
+      let frontSlotZ = 0;        // updated by rebuildSlots so the ghost tracks it
 
       function buildShadowGeometry(wppNow) {
         const padWorld = SELECTION_PAD_PX * wppNow;
@@ -331,6 +336,7 @@
             d = COFFEE_TABLE_DEPTH;
             x = 0;
             z =  paddedHalfZ + SLOT_GAP + d / 2;
+            frontSlotZ = z;
           }
           // Hit mesh — match the visual outline footprint.
           slot.mesh.geometry.dispose();
@@ -343,6 +349,7 @@
             .setFromPoints(roundedRectOutlinePoints(w, d, slotRadius));
           slot.line.computeLineDistances();
         }
+        if (ghostCoffeeTable) ghostCoffeeTable.position.z = frontSlotZ;
       }
 
       // Lights — soft top-down setup so the topdown view reads cleanly.
@@ -425,26 +432,38 @@
       const SLOT_FLASH_MS = 4000;
       let slotFlashStart = null;
       function updateSlotOpacity() {
-        let flash = 0;
+        let slotFlash = 0;
+        let ghostFlash = 0;
         if (slotFlashStart !== null) {
           const t = (performance.now() - slotFlashStart) / SLOT_FLASH_MS;
           if (t >= 1) {
             slotFlashStart = null;
           } else {
-            // Hold at full opacity for the first 3s, then ease-out fade
-            // over the final 1s.
-            const HOLD = 3 / 4; // 3s of 4s total
-            if (t <= HOLD) {
-              flash = 1;
+            // Slots: hold at full opacity for 3s, ease-out fade in last 1s.
+            const HOLD = 3 / 4;
+            if (t <= HOLD) slotFlash = 1;
+            else {
+              const fadeT = (t - HOLD) / (1 - HOLD);
+              slotFlash = Math.pow(1 - fadeT, 3);
+            }
+            // Ghost: ease-in over the first 1s, hold for 2s, ease-out
+            // fade alongside slots in the last 1s.
+            const FADE_IN = 1 / 4;
+            if (t <= FADE_IN) {
+              const inT = t / FADE_IN;
+              ghostFlash = inT * inT * inT; // easeInCubic
+            } else if (t <= HOLD) {
+              ghostFlash = 1;
             } else {
               const fadeT = (t - HOLD) / (1 - HOLD);
-              flash = Math.pow(1 - fadeT, 3);
+              ghostFlash = Math.pow(1 - fadeT, 3);
             }
           }
         }
         for (const s of slots) {
-          s.lineMat.opacity = s === hoveredSlot ? 1 : flash;
+          s.lineMat.opacity = s === hoveredSlot ? 1 : slotFlash;
         }
+        for (const m of ghostMaterials) m.opacity = ghostFlash * 0.5;
       }
       const easeInOutSine = (t) => -(Math.cos(Math.PI * t) - 1) / 2;
       const RING_FOV = 45;
@@ -675,6 +694,62 @@
           // Launch transition: start on the ground ring, animate up to
           // the elevated ring.
           startTransition('elevated');
+
+          // Load the coffee table ghost asynchronously — when it lands,
+          // it'll be parented to `world` and ride the front-slot Z.
+          loader.load(COFFEE_TABLE_URL, (ctGltf) => {
+            const ct = ctGltf.scene;
+            // Wrap in a pivot so we can rotate the whole asset 90° on Y
+            // without fighting the GLB's own root rotation.
+            const ctPivot = new THREE.Group();
+            ctPivot.add(ct);
+            // Y-up correction (same heuristic as the couch).
+            let ctBox = new THREE.Box3().setFromObject(ctPivot);
+            let ctSize = ctBox.getSize(new THREE.Vector3());
+            if (ctSize.z < ctSize.y) {
+              ct.rotation.x = -Math.PI / 2;
+              ctPivot.updateMatrixWorld(true);
+              ctBox = new THREE.Box3().setFromObject(ctPivot);
+              ctSize = ctBox.getSize(new THREE.Vector3());
+            }
+            // Rotate 90° around Y so its long axis aligns with the front
+            // slot's long axis (the couch width).
+            ct.rotation.y += Math.PI / 2;
+            ctPivot.updateMatrixWorld(true);
+            ctBox = new THREE.Box3().setFromObject(ctPivot);
+            ctSize = ctBox.getSize(new THREE.Vector3());
+            // Scale uniformly to fit the front slot footprint
+            // (couch width × COFFEE_TABLE_DEPTH), with 10% margin.
+            const targetW = halfX * 2;
+            const targetD = COFFEE_TABLE_DEPTH;
+            const fit = Math.min(targetW / ctSize.x, targetD / ctSize.z) * 0.9;
+            ct.scale.setScalar(fit);
+            ctPivot.updateMatrixWorld(true);
+            ctBox = new THREE.Box3().setFromObject(ctPivot);
+            ctSize = ctBox.getSize(new THREE.Vector3());
+            const ctCenter = ctBox.getCenter(new THREE.Vector3());
+            ct.position.sub(ctCenter);
+            // Sit on the floor (same Y plane as the couch's feet).
+            ctPivot.position.y = -halfY + ctSize.y / 2;
+            ctPivot.position.z = frontSlotZ;
+            // Make every material translucent and store refs.
+            ctPivot.traverse((node) => {
+              if (node.isMesh && node.material) {
+                const mats = Array.isArray(node.material) ? node.material : [node.material];
+                node.material = mats.map((m) => {
+                  const clone = m.clone();
+                  clone.transparent = true;
+                  clone.opacity = 0;
+                  clone.depthWrite = false;
+                  ghostMaterials.push(clone);
+                  return clone;
+                });
+                if (node.material.length === 1) node.material = node.material[0];
+              }
+            });
+            ghostCoffeeTable = ctPivot;
+            world.add(ctPivot);
+          }, undefined, (err) => console.error('coffee table load failed:', err));
           console.log('[IntroAffordance] model loaded', {
             sizeX: size.x, sizeY: size.y, sizeZ: size.z, camDist,
           });
