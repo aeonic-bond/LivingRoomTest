@@ -58,6 +58,10 @@
   --font-action-m-500-size:   12px;
   --font-action-m-500-weight: 500;
 
+  /* Font shorthands (weight size/line-height family) */
+  --type-label-small: normal 300 12px / 1 var(--font-family-base);
+  --type-label-base:  normal 400 14px / 1 var(--font-family-base);
+
   /* ── Component sizes ─────────────────────────────────────── */
   --primary-card-max-width: 320px;
 }

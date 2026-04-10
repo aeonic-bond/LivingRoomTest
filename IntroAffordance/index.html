@@ -301,7 +301,10 @@
       const slots = []; // { side, mesh }
       // Ghost coffee table that flashes in sync with the front slot.
       let ghostCoffeeTable = null;
+      let ghostBaseY = 0;        // floor Y of the ghost (rise origin)
       const ghostMaterials = []; // refs so opacity can be tweened in tick
+      let ghostShadowMesh = null;
+      let ghostShadowMat = null;
       let frontSlotZ = 0;        // updated by rebuildSlots so the ghost tracks it
 
       function buildShadowGeometry(wppNow) {
@@ -350,6 +353,7 @@
           slot.line.computeLineDistances();
         }
         if (ghostCoffeeTable) ghostCoffeeTable.position.z = frontSlotZ;
+        if (ghostShadowMesh) ghostShadowMesh.position.z = frontSlotZ;
       }
 
       // Lights — soft top-down setup so the topdown view reads cleanly.
@@ -429,8 +433,18 @@
       //   1. A 1s flash whenever the camera lands in the elevated view
       //      (single pulse: 0 → 1 → 0).
       //   2. Hover — stays at opacity 1 while the cursor is over a slot.
-      const SLOT_FLASH_MS = 4000;
+      const SLOT_FLASH_MS = 3200;
       let slotFlashStart = null;
+      // Hover is gated until the launch slot reveal has completed once,
+      // so the user can't accidentally pin the ghost mid-intro.
+      let hoverEnabled = false;
+      // Hover-driven ghost reveal — exponential approach toward target
+      // (1 when front slot hovered, 0 otherwise) so the table plays the
+      // same kind of in/out animation as the launch flash.
+      let ghostHoverValue = 0;
+      let lastTickMs = performance.now();
+      const GHOST_HOVER_IN_TAU = 130;  // ms — time constant for ease-in
+      const GHOST_HOVER_OUT_TAU = 260; // ms — slower ease-out
       function updateSlotOpacity() {
         let slotFlash = 0;
         let ghostFlash = 0;
@@ -438,6 +452,7 @@
           const t = (performance.now() - slotFlashStart) / SLOT_FLASH_MS;
           if (t >= 1) {
             slotFlashStart = null;
+            hoverEnabled = true;
           } else {
             // Slots: hold at full opacity for 3s, ease-out fade in last 1s.
             const HOLD = 3 / 4;
@@ -446,24 +461,48 @@
               const fadeT = (t - HOLD) / (1 - HOLD);
               slotFlash = Math.pow(1 - fadeT, 3);
             }
-            // Ghost: ease-in over the first 1s, hold for 2s, ease-out
-            // fade alongside slots in the last 1s.
-            const FADE_IN = 1 / 4;
+            // Ghost: ease-in over the first 1s, hold at full opacity for
+            // 2s, ease-out over the final 1s.
+            const FADE_IN = 0.15;
+            const HOLD_END = 3 / 4;
             if (t <= FADE_IN) {
               const inT = t / FADE_IN;
-              ghostFlash = inT * inT * inT; // easeInCubic
-            } else if (t <= HOLD) {
+              ghostFlash = 1 - Math.pow(1 - inT, 3); // easeOutCubic
+            } else if (t <= HOLD_END) {
               ghostFlash = 1;
             } else {
-              const fadeT = (t - HOLD) / (1 - HOLD);
-              ghostFlash = Math.pow(1 - fadeT, 3);
+              const outT = (t - HOLD_END) / (1 - HOLD_END);
+              ghostFlash = Math.pow(1 - outT, 3);
             }
           }
         }
         for (const s of slots) {
           s.lineMat.opacity = s === hoveredSlot ? 1 : slotFlash;
         }
-        for (const m of ghostMaterials) m.opacity = ghostFlash * 0.5;
+        // Premium ghost preview: cap at 78% opacity, and slide the model
+        // forward along +Z as it appears. While the front slot is hovered
+        // the ghost is forced to its fully-revealed state so the user can
+        // study it without the timer fading it out.
+        const GHOST_MAX_OPACITY = 0.78;
+        const SLIDE_INCHES = 6;
+        // Hover ramp — exponential approach so the table plays the same
+        // kind of slide-in animation when hovered, then slides back out
+        // when unhovered. Different time constants for in/out feel
+        // physical (quicker arrival, slower departure).
+        const now = performance.now();
+        const dt = now - lastTickMs;
+        lastTickMs = now;
+        const frontHovered = hoveredSlot && hoveredSlot.side === 'front';
+        const tau = frontHovered ? GHOST_HOVER_IN_TAU : GHOST_HOVER_OUT_TAU;
+        const k = 1 - Math.exp(-dt / tau);
+        const target = frontHovered ? 1 : 0;
+        ghostHoverValue += (target - ghostHoverValue) * k;
+        const ghostReveal = Math.max(ghostFlash, ghostHoverValue);
+        for (const m of ghostMaterials) m.opacity = ghostReveal * GHOST_MAX_OPACITY;
+        if (ghostCoffeeTable) {
+          ghostCoffeeTable.position.z = frontSlotZ + (1 - ghostReveal) * SLIDE_INCHES;
+        }
+        if (ghostShadowMat) ghostShadowMat.opacity = ghostReveal * 0.55;
       }
       const easeInOutSine = (t) => -(Math.cos(Math.PI * t) - 1) / 2;
       const RING_FOV = 45;
@@ -730,25 +769,57 @@
             const ctCenter = ctBox.getCenter(new THREE.Vector3());
             ct.position.sub(ctCenter);
             // Sit on the floor (same Y plane as the couch's feet).
-            ctPivot.position.y = -halfY + ctSize.y / 2;
+            ghostBaseY = -halfY + ctSize.y / 2;
+            ctPivot.position.y = ghostBaseY;
             ctPivot.position.z = frontSlotZ;
-            // Make every material translucent and store refs.
+            // Replace EVERY authored material with a single solid soft
+            // gray — overrides the GLB's glass top, metal hardware, etc.
+            // so the ghost reads as a "concept of furniture", not a
+            // half-translucent product render.
+            const ghostMat = new THREE.MeshStandardMaterial({
+              color: 0xa8a39f, // warm calico gray
+              roughness: 0.85,
+              metalness: 0,
+              transparent: true,
+              opacity: 0,
+              depthWrite: false,
+            });
+            ghostMaterials.push(ghostMat);
             ctPivot.traverse((node) => {
-              if (node.isMesh && node.material) {
-                const mats = Array.isArray(node.material) ? node.material : [node.material];
-                node.material = mats.map((m) => {
-                  const clone = m.clone();
-                  clone.transparent = true;
-                  clone.opacity = 0;
-                  clone.depthWrite = false;
-                  ghostMaterials.push(clone);
-                  return clone;
-                });
-                if (node.material.length === 1) node.material = node.material[0];
-              }
+              if (node.isMesh) node.material = ghostMat;
             });
             ghostCoffeeTable = ctPivot;
             world.add(ctPivot);
+
+            // Soft contact shadow — a separate dark blurred plane sitting
+            // just above the floor under the ghost. Uses a radial-gradient
+            // canvas texture so the edges feel grounded, not stamped.
+            const shadowCanvas = document.createElement('canvas');
+            shadowCanvas.width = shadowCanvas.height = 256;
+            const sctx = shadowCanvas.getContext('2d');
+            const grad = sctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+            grad.addColorStop(0.0, 'rgba(0,0,0,0.55)');
+            grad.addColorStop(0.6, 'rgba(0,0,0,0.18)');
+            grad.addColorStop(1.0, 'rgba(0,0,0,0.00)');
+            sctx.fillStyle = grad;
+            sctx.fillRect(0, 0, 256, 256);
+            const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+            ghostShadowMat = new THREE.MeshBasicMaterial({
+              map: shadowTex,
+              transparent: true,
+              opacity: 0,
+              depthWrite: false,
+            });
+            const shadowW = ctSize.x * 1.4;
+            const shadowD = ctSize.z * 1.6;
+            ghostShadowMesh = new THREE.Mesh(
+              new THREE.PlaneGeometry(shadowW, shadowD),
+              ghostShadowMat,
+            );
+            ghostShadowMesh.rotation.x = -Math.PI / 2;
+            ghostShadowMesh.position.y = -halfY + 0.02; // just above floor
+            ghostShadowMesh.position.z = frontSlotZ;
+            world.add(ghostShadowMesh);
           }, undefined, (err) => console.error('coffee table load failed:', err));
           console.log('[IntroAffordance] model loaded', {
             sizeX: size.x, sizeY: size.y, sizeZ: size.z, camDist,
@@ -818,7 +889,7 @@
       renderer.domElement.addEventListener('pointermove', (e) => {
         // Hover raycast — always.
         setNdcFromEvent(e);
-        if (!pointerDown) setHovered(pickSlot());
+        if (!pointerDown) setHovered(hoverEnabled ? pickSlot() : null);
 
         if (!pointerDown || transition) return;
         const dx = e.clientX - lastX;
